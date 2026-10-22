@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <numbers>
 
 ImVec2 world_to_screen(const revolute::Point2D& world_position, const ImVec2& screen_origin, double scale) {
     double scaled_world_x = world_position.x * scale;
@@ -50,6 +51,9 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init();
 
+    // calculate a fixed pose
+    revolute::ArmPose pose = revolute::forward_kinematics(1, 1, 0, std::numbers::pi / 2);
+
     while (!glfwWindowShouldClose(window)) {
         // clear the screen using the color state specified above
         glClear(GL_COLOR_BUFFER_BIT);
@@ -63,19 +67,34 @@ int main() {
         ImGui::SetNextWindowPos({0, 0});
         ImGui::SetNextWindowSize({250, io.DisplaySize.y});
 
-        ImVec2 arm_area_center = {(io.DisplaySize.x + 250) / 2, io.DisplaySize.y / 2};
+        ImVec2 screen_origin = {(io.DisplaySize.x + 250) / 2, io.DisplaySize.y / 2};
+
+        ImVec2 base = world_to_screen(pose.base, screen_origin, 140);
+        ImVec2 elbow = world_to_screen(pose.elbow, screen_origin, 140);
+        ImVec2 hand = world_to_screen(pose.hand, screen_origin, 140);
 
         bool controls_panel = ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
         if (controls_panel) {
             ImGui::Text("Controls will go here");
-            ImGui::Text("Arm center: (%.1f, %.1f)", arm_area_center.x, arm_area_center.y);
+            ImGui::Text("Arm center: (%.1f, %.1f)", screen_origin.x, screen_origin.y);
         }
         ImGui::End();
 
+        // draw axes
         ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-        draw_list->AddCircleFilled(arm_area_center, 5.0f, IM_COL32(235, 80, 85, 255));
-        draw_list->AddLine({250, arm_area_center.y}, {io.DisplaySize.x, 350}, IM_COL32(75, 80, 90, 255));
-        draw_list->AddLine({arm_area_center.x, 0}, {arm_area_center.x, io.DisplaySize.y}, IM_COL32(75, 80, 90, 255));
+        draw_list->AddLine({250, screen_origin.y}, {io.DisplaySize.x, screen_origin.y}, IM_COL32(75, 80, 90, 255));
+        draw_list->AddLine({screen_origin.x, 0}, {screen_origin.x, io.DisplaySize.y}, IM_COL32(75, 80, 90, 255));
+
+        // draw links
+        draw_list->AddLine(base, elbow, IM_COL32(190, 195, 205, 255), 4.0f);
+        draw_list->AddLine(elbow, hand, IM_COL32(190, 195, 205, 255), 4.0f);
+
+        // draw base
+        draw_list->AddCircleFilled(base, 5.0f, IM_COL32(235, 80, 85, 255));
+
+        // draw joints
+        draw_list->AddCircleFilled(elbow, 5.0f, IM_COL32(235, 80, 85, 255));
+        draw_list->AddCircleFilled(hand, 5.0f, IM_COL32(235, 80, 85, 255));
 
         // rendering
         ImGui::Render();

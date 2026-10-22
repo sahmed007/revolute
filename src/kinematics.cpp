@@ -14,8 +14,7 @@ Point2D calculate_endpoint(double link_length, double radians) {
 }
 } // namespace
 
-ArmPose forward_kinematics(double upper_arm_length, double forearm_length, double shoulder_angle,
-                           double elbow_angle) {
+ArmPose forward_kinematics(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle) {
     if (upper_arm_length <= 0 || forearm_length <= 0) {
         throw std::invalid_argument("Lengths must be greater than zero");
     }
