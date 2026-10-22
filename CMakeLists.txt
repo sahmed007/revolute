@@ -10,11 +10,50 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Let clangd use the same compilation settings as the build.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(FetchContent)
+find_package(OpenGL REQUIRED)
+
+# Only build GLFW itself, not its examples, tests, or documentation.
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(glfw
+  GIT_REPOSITORY https://github.com/glfw/glfw.git
+  GIT_TAG 3.4
+  GIT_SHALLOW TRUE
+)
+FetchContent_Declare(imgui
+  GIT_REPOSITORY https://github.com/ocornut/imgui.git
+  GIT_TAG v1.91.9b
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(glfw imgui)
+
+# Dear ImGui ships source files rather than a CMake library target.
+add_library(revolute_imgui STATIC
+  ${imgui_SOURCE_DIR}/imgui.cpp
+  ${imgui_SOURCE_DIR}/imgui_draw.cpp
+  ${imgui_SOURCE_DIR}/imgui_tables.cpp
+  ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+  ${imgui_SOURCE_DIR}/imgui_demo.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(revolute_imgui SYSTEM PUBLIC
+  ${imgui_SOURCE_DIR}
+  ${imgui_SOURCE_DIR}/backends
+)
+target_link_libraries(revolute_imgui PUBLIC glfw OpenGL::GL)
+
 add_library(revolute_kinematics src/kinematics.cpp)
 target_include_directories(revolute_kinematics PUBLIC include)
 
 add_executable(revolute src/main.cpp)
-target_link_libraries(revolute PRIVATE revolute_kinematics)
+if(APPLE)
+  target_compile_definitions(revolute PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+target_link_libraries(revolute PRIVATE revolute_kinematics revolute_imgui)
 
 function(enable_project_warnings target)
   if(MSVC)
@@ -29,18 +68,12 @@ enable_project_warnings(revolute)
 
 include(CTest)
 if(BUILD_TESTING)
-  include(FetchContent)
   FetchContent_Declare(doctest
     GIT_REPOSITORY https://github.com/doctest/doctest.git
-    GIT_TAG v2.4.11
+    GIT_TAG v2.5.3
     GIT_SHALLOW TRUE
   )
-  # doctest 2.4.11 uses an older policy minimum; keep CMake 4 compatibility local.
-  function(make_doctest_available)
-    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-    FetchContent_MakeAvailable(doctest)
-  endfunction()
-  make_doctest_available()
+  FetchContent_MakeAvailable(doctest)
 
   add_executable(revolute_tests tests/kinematics_test.cpp)
   target_link_libraries(revolute_tests PRIVATE revolute_kinematics doctest::doctest)
