@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <string>
 
 int main() {
     // ensure GLFW is initialized before program
@@ -51,7 +52,25 @@ int main() {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        ImGui::ShowDemoWindow();
+        ImGui::SetNextWindowPos({0, 0});
+        ImGui::SetNextWindowSize({250, io.DisplaySize.y});
+
+        ImVec2 arm_area_center = {(io.DisplaySize.x + 250) / 2, io.DisplaySize.y / 2};
+
+        bool controls_panel =
+            ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+        if (controls_panel) {
+            ImGui::Text("Controls will go here");
+            ImGui::Text("Arm center: (%.1f, %.1f)", arm_area_center.x, arm_area_center.y);
+        }
+        ImGui::End();
+
+        ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
+        draw_list->AddCircleFilled(arm_area_center, 5.0f, IM_COL32(235, 80, 85, 255));
+        draw_list->AddLine({250, arm_area_center.y}, {io.DisplaySize.x, 350},
+                           IM_COL32(75, 80, 90, 255));
+        draw_list->AddLine({arm_area_center.x, 0}, {arm_area_center.x, io.DisplaySize.y},
+                           IM_COL32(75, 80, 90, 255));
 
         // rendering
         ImGui::Render();

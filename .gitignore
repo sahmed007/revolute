@@ -12,3 +12,6 @@ out/
 
 # macOS
 .DS_Store
+
+# Local UI state from Dear ImGui
+imgui.ini
