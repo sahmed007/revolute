@@ -52,7 +52,10 @@ int main() {
     ImGui_ImplOpenGL3_Init();
 
     // calculate a fixed pose
-    revolute::ArmPose pose = revolute::forward_kinematics(1, 1, 0, std::numbers::pi / 2);
+    double upper_arm_length = 1;
+    double forearm_length = 1;
+    float shoulder_angle = 0;
+    float elbow_angle = 90;
 
     while (!glfwWindowShouldClose(window)) {
         // clear the screen using the color state specified above
@@ -66,19 +69,31 @@ int main() {
         ImGui::NewFrame();
         ImGui::SetNextWindowPos({0, 0});
         ImGui::SetNextWindowSize({250, io.DisplaySize.y});
-
         ImVec2 screen_origin = {(io.DisplaySize.x + 250) / 2, io.DisplaySize.y / 2};
 
+        // create control panel area
+        bool controls_panel = ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+        if (controls_panel) {
+            ImGui::SliderFloat("Shoulder Angle (degrees)", &shoulder_angle, -180.0f, 180.0f);
+            ImGui::SliderFloat("Elbow Angle (degrees)", &elbow_angle, -180.0f, 180.0f);
+        }
+
+        // calculate forward kinematics
+        auto shoulder_angle_radians = shoulder_angle * std::numbers::pi / 180;
+        auto elbow_angle_radians = elbow_angle * std::numbers::pi / 180;
+        revolute::ArmPose pose =
+            revolute::forward_kinematics(upper_arm_length, forearm_length, shoulder_angle_radians, elbow_angle_radians);
+
+        if (controls_panel) {
+            ImGui::Text("Hand position: (%.1f, %.1f)", pose.hand.x, pose.hand.y);
+        }
+
+        ImGui::End();
+
+        // initialize markers
         ImVec2 base = world_to_screen(pose.base, screen_origin, 140);
         ImVec2 elbow = world_to_screen(pose.elbow, screen_origin, 140);
         ImVec2 hand = world_to_screen(pose.hand, screen_origin, 140);
-
-        bool controls_panel = ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
-        if (controls_panel) {
-            ImGui::Text("Controls will go here");
-            ImGui::Text("Arm center: (%.1f, %.1f)", screen_origin.x, screen_origin.y);
-        }
-        ImGui::End();
 
         // draw axes
         ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
