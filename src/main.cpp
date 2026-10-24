@@ -1,3 +1,4 @@
+#include "arm_renderer.hpp"
 #include "kinematics.hpp"
 #include <GLFW/glfw3.h>
 #include <cstdlib>
@@ -6,13 +7,9 @@
 #include <imgui_impl_opengl3.h>
 #include <numbers>
 
-ImVec2 world_to_screen(const revolute::Point2D& world_position, const ImVec2& screen_origin, double scale) {
-    double scaled_world_x = world_position.x * scale;
-    double scaled_world_y = world_position.y * scale;
-    double displaced_x = screen_origin.x + scaled_world_x;
-    double displaced_y = screen_origin.y - scaled_world_y;
-    return ImVec2{static_cast<float>(displaced_x), static_cast<float>(displaced_y)};
-}
+const int CONTROLS_WIDTH = 250;
+const int PIXELS_PER_METER = 140;
+const ImU32 AXIS_COLOR = IM_COL32(75, 80, 90, 255);
 
 int main() {
     // ensure GLFW is initialized before program
@@ -51,11 +48,11 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init();
 
-    // calculate a fixed pose
+    // define angles
     double upper_arm_length = 1;
     double forearm_length = 1;
-    float shoulder_angle = 0;
-    float elbow_angle = 90;
+    float shoulder_angle_degrees = 0;
+    float elbow_angle_degrees = 90;
 
     while (!glfwWindowShouldClose(window)) {
         // clear the screen using the color state specified above
@@ -68,19 +65,19 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         ImGui::SetNextWindowPos({0, 0});
-        ImGui::SetNextWindowSize({250, io.DisplaySize.y});
-        ImVec2 screen_origin = {(io.DisplaySize.x + 250) / 2, io.DisplaySize.y / 2};
+        ImGui::SetNextWindowSize({CONTROLS_WIDTH, io.DisplaySize.y});
+        ImVec2 screen_origin = {(io.DisplaySize.x + CONTROLS_WIDTH) / 2, io.DisplaySize.y / 2};
 
         // create control panel area
         bool controls_panel = ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
         if (controls_panel) {
-            ImGui::SliderFloat("Shoulder Angle (degrees)", &shoulder_angle, -180.0f, 180.0f);
-            ImGui::SliderFloat("Elbow Angle (degrees)", &elbow_angle, -180.0f, 180.0f);
+            ImGui::SliderFloat("Shoulder Angle (degrees)", &shoulder_angle_degrees, -180.0f, 180.0f);
+            ImGui::SliderFloat("Elbow Angle (degrees)", &elbow_angle_degrees, -180.0f, 180.0f);
         }
 
         // calculate forward kinematics
-        auto shoulder_angle_radians = shoulder_angle * std::numbers::pi / 180;
-        auto elbow_angle_radians = elbow_angle * std::numbers::pi / 180;
+        auto shoulder_angle_radians = shoulder_angle_degrees * std::numbers::pi / 180;
+        auto elbow_angle_radians = elbow_angle_degrees * std::numbers::pi / 180;
         revolute::ArmPose pose =
             revolute::forward_kinematics(upper_arm_length, forearm_length, shoulder_angle_radians, elbow_angle_radians);
 
@@ -90,26 +87,13 @@ int main() {
 
         ImGui::End();
 
-        // initialize markers
-        ImVec2 base = world_to_screen(pose.base, screen_origin, 140);
-        ImVec2 elbow = world_to_screen(pose.elbow, screen_origin, 140);
-        ImVec2 hand = world_to_screen(pose.hand, screen_origin, 140);
-
         // draw axes
         ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-        draw_list->AddLine({250, screen_origin.y}, {io.DisplaySize.x, screen_origin.y}, IM_COL32(75, 80, 90, 255));
-        draw_list->AddLine({screen_origin.x, 0}, {screen_origin.x, io.DisplaySize.y}, IM_COL32(75, 80, 90, 255));
+        draw_list->AddLine({CONTROLS_WIDTH, screen_origin.y}, {io.DisplaySize.x, screen_origin.y}, AXIS_COLOR);
+        draw_list->AddLine({screen_origin.x, 0}, {screen_origin.x, io.DisplaySize.y}, AXIS_COLOR);
 
-        // draw links
-        draw_list->AddLine(base, elbow, IM_COL32(190, 195, 205, 255), 4.0f);
-        draw_list->AddLine(elbow, hand, IM_COL32(190, 195, 205, 255), 4.0f);
-
-        // draw base
-        draw_list->AddCircleFilled(base, 5.0f, IM_COL32(235, 80, 85, 255));
-
-        // draw joints
-        draw_list->AddCircleFilled(elbow, 5.0f, IM_COL32(235, 80, 85, 255));
-        draw_list->AddCircleFilled(hand, 5.0f, IM_COL32(235, 80, 85, 255));
+        // draw arm
+        revolute::draw_arm(pose, screen_origin, PIXELS_PER_METER);
 
         // rendering
         ImGui::Render();

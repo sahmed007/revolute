@@ -48,8 +48,8 @@ target_link_libraries(revolute_imgui PUBLIC glfw OpenGL::GL)
 
 add_library(revolute_kinematics src/kinematics.cpp)
 target_include_directories(revolute_kinematics PUBLIC include)
+add_executable(revolute src/main.cpp src/arm_renderer.cpp)
 
-add_executable(revolute src/main.cpp)
 if(APPLE)
   target_compile_definitions(revolute PRIVATE GL_SILENCE_DEPRECATION)
 endif()
