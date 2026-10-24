@@ -18,9 +18,7 @@ void check_point(revolute::Point2D actual, revolute::Point2D expected) {
     CHECK(std::abs(actual.y - expected.y) <= tolerance);
 }
 
-double distance(revolute::Point2D a, revolute::Point2D b) {
-    return std::hypot(a.x - b.x, a.y - b.y);
-}
+double distance(revolute::Point2D a, revolute::Point2D b) { return std::hypot(a.x - b.x, a.y - b.y); }
 
 } // namespace
 
@@ -91,5 +89,52 @@ TEST_CASE("Non-finite angles are rejected for either joint") {
         CAPTURE(angle);
         CHECK_THROWS_AS(revolute::forward_kinematics(1, 1, angle, 0), std::invalid_argument);
         CHECK_THROWS_AS(revolute::forward_kinematics(1, 1, 0, angle), std::invalid_argument);
+    }
+}
+
+TEST_CASE("Unequal links reach an annulus regardless of link order") {
+    struct Example {
+        revolute::Point2D target;
+        bool reachable;
+    };
+    const Example examples[] = {
+        {{0, 0}, false},        {{1, 1}, false},       {{2, 0}, true},        {{0, 3}, true},
+        {{-4, 0}, true},        {{3, 3}, false},       {{-2, -2}, true},      {{2, -2}, true},
+        {{2 - 1e-6, 0}, false}, {{2 + 1e-6, 0}, true}, {{4 - 1e-6, 0}, true}, {{4 + 1e-6, 0}, false},
+    };
+
+    for (const auto& example : examples) {
+        CAPTURE(example.target.x);
+        CAPTURE(example.target.y);
+        CHECK(revolute::reachable(3, 1, example.target) == example.reachable);
+        CHECK(revolute::reachable(1, 3, example.target) == example.reachable);
+    }
+}
+
+TEST_CASE("Equal links reach the origin and the disk out to full extension") {
+    CHECK(revolute::reachable(1, 1, {0, 0}));
+    CHECK(revolute::reachable(1, 1, {0.5, 0}));
+    CHECK(revolute::reachable(1, 1, {1, 1}));
+    CHECK(revolute::reachable(1, 1, {0, -2}));
+    CHECK_FALSE(revolute::reachable(1, 1, {0, 2 + 1e-6}));
+}
+
+TEST_CASE("Reachability rejects invalid lengths for either link") {
+    const double infinity = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (double length : {0.0, -1.0, infinity, -infinity, nan}) {
+        CAPTURE(length);
+        CHECK_THROWS_AS(revolute::reachable(length, 1, {1, 0}), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::reachable(1, length, {1, 0}), std::invalid_argument);
+    }
+}
+
+TEST_CASE("Reachability rejects non-finite target coordinates") {
+    const double infinity = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (double coordinate : {infinity, -infinity, nan}) {
+        CAPTURE(coordinate);
+        CHECK_THROWS_AS(revolute::reachable(1, 1, {coordinate, 0}), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::reachable(1, 1, {0, coordinate}), std::invalid_argument);
     }
 }
