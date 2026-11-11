@@ -8,7 +8,7 @@
 #include <imgui_impl_opengl3.h>
 #include <numbers>
 
-const int CONTROLS_WIDTH = 250;
+const int CONTROLS_WIDTH = 340;
 const int PIXELS_PER_METER = 140;
 const ImU32 AXIS_COLOR = IM_COL32(75, 80, 90, 255);
 
@@ -23,7 +23,7 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
-    GLFWwindow* window = glfwCreateWindow(1000, 700, "Revolute", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1100, 700, "Revolute", nullptr, nullptr);
     if (!window) {
         glfwTerminate();
         exit(EXIT_FAILURE);
@@ -55,6 +55,11 @@ int main() {
     float shoulder_angle_degrees = 0;
     float elbow_angle_degrees = 90;
 
+    // define target
+    double target_x = 1.0;
+    double target_y = 1.0;
+    bool target_unreachable = false;
+
     while (!glfwWindowShouldClose(window)) {
         // clear the screen using the color state specified above
         glClear(GL_COLOR_BUFFER_BIT);
@@ -72,8 +77,34 @@ int main() {
         // create control panel area
         bool controls_panel = ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
         if (controls_panel) {
-            ImGui::SliderFloat("Shoulder Angle (degrees)", &shoulder_angle_degrees, -180.0f, 180.0f);
-            ImGui::SliderFloat("Elbow Angle (degrees)", &elbow_angle_degrees, -180.0f, 180.0f);
+            ImGui::PushItemWidth(-1.0f);
+            ImGui::TextUnformatted("Shoulder angle (degrees)");
+            ImGui::SliderFloat("##shoulder", &shoulder_angle_degrees, -180.0f, 180.0f);
+            ImGui::TextUnformatted("Elbow angle (degrees)");
+            ImGui::SliderFloat("##elbow", &elbow_angle_degrees, -180.0f, 180.0f);
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            ImGui::TextUnformatted("Target X (m)");
+            ImGui::InputDouble("##target_x", &target_x);
+            ImGui::TextUnformatted("Target Y (m)");
+            ImGui::InputDouble("##target_y", &target_y);
+            ImGui::PopItemWidth();
+
+            if (ImGui::Button("Solve IK")) {
+                auto result = revolute::inverse_kinematics(upper_arm_length, forearm_length, {target_x, target_y});
+                target_unreachable = result.status == revolute::IKStatus::unreachable;
+                if (result.status == revolute::IKStatus::success) {
+                    const auto& angles = result.solutions.front();
+                    shoulder_angle_degrees = static_cast<float>((angles.shoulder * 180) / std::numbers::pi);
+                    elbow_angle_degrees = static_cast<float>((angles.elbow * 180) / std::numbers::pi);
+                }
+            }
+
+            if (target_unreachable) {
+                ImGui::TextWrapped("Target position is unreachable.");
+            }
         }
 
         // calculate forward kinematics
