@@ -1,5 +1,7 @@
 #include "arm_renderer.hpp"
+
 #include "kinematics.hpp"
+
 #include <imgui.h>
 
 namespace revolute {

@@ -1,5 +1,6 @@
 #include "arm_renderer.hpp"
 #include "kinematics.hpp"
+
 #include <GLFW/glfw3.h>
 #include <cstdlib>
 #include <imgui.h>
@@ -34,7 +35,7 @@ int main() {
     // sync buffer swap with the display
     glfwSwapInterval(1);
 
-    // set the clear color (Red, Green, Blue, Alpha) clamped between 0.0f and 1.0f
+    // set the clear color (Red, Green, Blue, Alpha) clamped
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
     // setup Dear ImGui context

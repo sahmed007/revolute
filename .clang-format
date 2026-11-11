@@ -1,9 +1,55 @@
-# yaml-language-server: $schema=https://json.schemastore.org/clang-format-21.x.json
+# yaml-language-server: $schema=https://json.schemastore.org/clang-format-23.x.json
 Language: Cpp
 BasedOnStyle: LLVM
 ColumnLimit: 120
 IndentWidth: 4
 TabWidth: 4
-# Force pointers to the type for C++.
+UseTab: Never
+ContinuationIndentWidth: 4
+
+# Wrapped signatures/calls become vertical lists, not a staircase aligned
+# under a potentially long function name. Short calls stay on one line.
+AlignAfterOpenBracket: BlockIndent
+BinPackParameters: false
+BinPackArguments: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllArgumentsOnNextLine: false
+PenaltyReturnTypeOnItsOwnLine: 1000
+
+# Keep continuation indentation shallow and put operators where the next
+# line starts, making long mathematical expressions easier to follow.
+AlignOperands: DontAlign
+BreakBeforeBinaryOperators: NonAssignment
+BreakBinaryOperations: RespectPrecedence
+BreakBeforeTernaryOperators: true
+
+# Give control flow and declarations room without adding extra brace lines.
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortEnumsOnASingleLine: false
+NamespaceIndentation: None
+MaxEmptyLinesToKeep: 1
+SeparateDefinitionBlocks: Always
+
+# Avoid padding neighboring declarations to match the longest name.
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+
+# Force pointers and references to the type for C++.
 DerivePointerAlignment: false
 PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Keep local headers separate from system/library headers.
+IncludeBlocks: Regroup
+SortIncludes: CaseSensitive
+IncludeCategories:
+  - Regex: '^"'
+    Priority: 1
+  - Regex: "^<"
+    Priority: 2
+  - Regex: ".*"
+    Priority: 3

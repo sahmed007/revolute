@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kinematics.hpp"
+
 #include <imgui.h>
 
 namespace revolute {

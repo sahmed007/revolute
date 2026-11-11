@@ -1,8 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
-
 #include "kinematics.hpp"
+
 #include <cmath>
+#include <doctest/doctest.h>
 #include <limits>
 #include <numbers>
 #include <stdexcept>
@@ -18,7 +18,9 @@ void check_point(revolute::Point2D actual, revolute::Point2D expected) {
     CHECK(std::abs(actual.y - expected.y) <= tolerance);
 }
 
-double distance(revolute::Point2D a, revolute::Point2D b) { return std::hypot(a.x - b.x, a.y - b.y); }
+double distance(revolute::Point2D a, revolute::Point2D b) {
+    return std::hypot(a.x - b.x, a.y - b.y);
+}
 
 } // namespace
 
@@ -29,6 +31,7 @@ TEST_CASE("Known one-meter arm poses match hand calculations") {
         revolute::Point2D expected_elbow;
         revolute::Point2D expected_hand;
     };
+
     const Example examples[] = {
         {0, 0, {1, 0}, {2, 0}},
         {pi / 2, 0, {0, 1}, {0, 2}},
@@ -97,10 +100,20 @@ TEST_CASE("Unequal links reach an annulus regardless of link order") {
         revolute::Point2D target;
         bool reachable;
     };
+
     const Example examples[] = {
-        {{0, 0}, false},        {{1, 1}, false},       {{2, 0}, true},        {{0, 3}, true},
-        {{-4, 0}, true},        {{3, 3}, false},       {{-2, -2}, true},      {{2, -2}, true},
-        {{2 - 1e-6, 0}, false}, {{2 + 1e-6, 0}, true}, {{4 - 1e-6, 0}, true}, {{4 + 1e-6, 0}, false},
+        {{0, 0}, false},
+        {{1, 1}, false},
+        {{2, 0}, true},
+        {{0, 3}, true},
+        {{-4, 0}, true},
+        {{3, 3}, false},
+        {{-2, -2}, true},
+        {{2, -2}, true},
+        {{2 - 1e-6, 0}, false},
+        {{2 + 1e-6, 0}, true},
+        {{4 - 1e-6, 0}, true},
+        {{4 + 1e-6, 0}, false},
     };
 
     for (const auto& example : examples) {
@@ -137,4 +150,163 @@ TEST_CASE("Reachability rejects non-finite target coordinates") {
         CHECK_THROWS_AS(revolute::reachable(1, 1, {coordinate, 0}), std::invalid_argument);
         CHECK_THROWS_AS(revolute::reachable(1, 1, {0, coordinate}), std::invalid_argument);
     }
+}
+
+namespace {
+
+void check_ik_candidates(
+    double upper_length,
+    double forearm_length,
+    revolute::Point2D target,
+    const revolute::IKResult& result
+) {
+    for (const auto& angles : result.solutions) {
+        CAPTURE(angles.shoulder);
+        CAPTURE(angles.elbow);
+        REQUIRE(std::isfinite(angles.shoulder));
+        REQUIRE(std::isfinite(angles.elbow));
+        CHECK(angles.shoulder >= -pi);
+        CHECK(angles.shoulder <= pi);
+        CHECK(angles.elbow >= -pi);
+        CHECK(angles.elbow <= pi);
+        const auto pose = revolute::forward_kinematics(upper_length, forearm_length, angles.shoulder, angles.elbow);
+        check_point(pose.hand, target);
+    }
+    if (result.solutions.size() == 2) {
+        const auto first = result.solutions[0];
+        const auto second = result.solutions[1];
+        const auto first_pose = revolute::forward_kinematics(upper_length, forearm_length, first.shoulder, first.elbow);
+        const auto second_pose =
+            revolute::forward_kinematics(upper_length, forearm_length, second.shoulder, second.elbow);
+        // Distinct elbow positions prove these are two physical configurations.
+        CHECK(distance(first_pose.elbow, second_pose.elbow) > tolerance);
+    }
+}
+
+} // namespace
+
+TEST_CASE("IK returns distinct solutions in every quadrant with either link order") {
+    for (double upper_length : {1.0, 1.5}) {
+        double forearm_length = 2.5 - upper_length;
+        for (double x : {-1.0, 1.0}) {
+            for (double y : {-1.0, 1.0}) {
+                CAPTURE(upper_length);
+                CAPTURE(x);
+                CAPTURE(y);
+                revolute::Point2D target{x, y};
+                auto result = revolute::inverse_kinematics(upper_length, forearm_length, target);
+                REQUIRE(result.status == revolute::IKStatus::success);
+                REQUIRE(result.solutions.size() == 2);
+                check_ik_candidates(upper_length, forearm_length, target, result);
+            }
+        }
+    }
+}
+
+TEST_CASE("Unit-link IK agrees with hand-calculated angles") {
+    auto result = revolute::inverse_kinematics(1, 1, {1, 1});
+    REQUIRE(result.status == revolute::IKStatus::success);
+    REQUIRE(result.solutions.size() == 2);
+    CHECK(result.solutions[0].shoulder == doctest::Approx(0).epsilon(1e-12));
+    CHECK(result.solutions[0].elbow == doctest::Approx(pi / 2));
+    CHECK(result.solutions[1].shoulder == doctest::Approx(pi / 2));
+    CHECK(result.solutions[1].elbow == doctest::Approx(-pi / 2));
+    check_ik_candidates(1, 1, {1, 1}, result);
+}
+
+TEST_CASE("IK handles inner and outer boundaries and their neighborhoods") {
+    struct Example {
+        double radius;
+        unsigned count;
+    };
+
+    const Example examples[] = {{0, 0}, {2 - 1e-6, 0}, {2, 1}, {2 + 1e-6, 2}, {4 - 1e-6, 2}, {4, 1}, {4 + 1e-6, 0}};
+    for (double upper_length : {1.0, 3.0}) {
+        double forearm_length = 4 - upper_length;
+        for (auto example : examples) {
+            for (auto direction :
+                 {revolute::Point2D{1, 0},
+                  revolute::Point2D{-1, 0},
+                  revolute::Point2D{0, 1},
+                  revolute::Point2D{0, -1}}) {
+                revolute::Point2D target{direction.x * example.radius, direction.y * example.radius};
+                CAPTURE(upper_length);
+                CAPTURE(target.x);
+                CAPTURE(target.y);
+                auto result = revolute::inverse_kinematics(upper_length, forearm_length, target);
+                CHECK(
+                    result.status
+                    == (example.count == 0 ? revolute::IKStatus::unreachable : revolute::IKStatus::success)
+                );
+                REQUIRE(result.solutions.size() == example.count);
+                check_ik_candidates(upper_length, forearm_length, target, result);
+            }
+        }
+    }
+}
+
+TEST_CASE("Equal links choose a folded origin representative and solve nearby targets") {
+    auto origin = revolute::inverse_kinematics(1, 1, {0, 0});
+    REQUIRE(origin.status == revolute::IKStatus::success);
+    REQUIRE(origin.solutions.size() == 1);
+    CHECK(origin.solutions[0].shoulder == 0);
+    CHECK(origin.solutions[0].elbow == pi);
+    check_ik_candidates(1, 1, {0, 0}, origin);
+
+    for (auto target :
+         {revolute::Point2D{1e-3, 0},
+          revolute::Point2D{0, -1e-3},
+          revolute::Point2D{2 - 1e-6, 0},
+          revolute::Point2D{2, 0}}) {
+        auto result = revolute::inverse_kinematics(1, 1, target);
+        REQUIRE(result.status == revolute::IKStatus::success);
+        REQUIRE(result.solutions.size() == (target.x == 2 ? 1 : 2));
+        check_ik_candidates(1, 1, target, result);
+    }
+    auto outside = revolute::inverse_kinematics(1, 1, {2 + 1e-6, 0});
+    CHECK(outside.status == revolute::IKStatus::unreachable);
+    CHECK(outside.solutions.empty());
+}
+
+TEST_CASE("IK rejects invalid lengths and non-finite targets") {
+    const double infinity = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (double length : {0.0, -1.0, infinity, -infinity, nan}) {
+        CAPTURE(length);
+        CHECK_THROWS_AS(revolute::inverse_kinematics(length, 1, {1, 0}), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::inverse_kinematics(1, length, {1, 0}), std::invalid_argument);
+    }
+    for (double coordinate : {infinity, -infinity, nan}) {
+        CAPTURE(coordinate);
+        CHECK_THROWS_AS(revolute::inverse_kinematics(1, 1, {coordinate, 0}), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::inverse_kinematics(1, 1, {0, coordinate}), std::invalid_argument);
+    }
+}
+
+TEST_CASE("Joint limits include endpoints and reject each out-of-range joint") {
+    revolute::JointLimits limits{{-pi / 2, 0}, {pi / 2, pi}};
+    CHECK(revolute::within_joint_limits({0, pi / 2}, limits));
+    CHECK(revolute::within_joint_limits(limits.minimum, limits));
+    CHECK(revolute::within_joint_limits(limits.maximum, limits));
+    CHECK_FALSE(revolute::within_joint_limits({-pi / 2 - 1e-6, pi / 2}, limits));
+    CHECK_FALSE(revolute::within_joint_limits({pi / 2 + 1e-6, pi / 2}, limits));
+    CHECK_FALSE(revolute::within_joint_limits({0, -1e-6}, limits));
+    CHECK_FALSE(revolute::within_joint_limits({0, pi + 1e-6}, limits));
+}
+
+TEST_CASE("Geometric reachability is separate from admissibility under joint limits") {
+    auto result = revolute::inverse_kinematics(1, 1, {1, 1});
+    REQUIRE(result.status == revolute::IKStatus::success);
+    REQUIRE(result.solutions.size() == 2);
+    revolute::JointLimits positive_elbow{{-pi, 0}, {pi, pi}};
+    revolute::JointLimits restricted_elbow{{-pi, -pi / 4}, {pi, pi / 4}};
+    unsigned admissible = 0;
+    for (auto angles : result.solutions) {
+        if (revolute::within_joint_limits(angles, positive_elbow)) {
+            ++admissible;
+        }
+        CHECK_FALSE(revolute::within_joint_limits(angles, restricted_elbow));
+    }
+    CHECK(admissible == 1);
+    CHECK(result.status == revolute::IKStatus::success);
 }
