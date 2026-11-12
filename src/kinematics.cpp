@@ -1,5 +1,7 @@
 #include "kinematics.hpp"
 
+#include "Eigen/src/Core/Matrix.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -9,6 +11,25 @@
 namespace revolute {
 
 namespace {
+
+void validate_arm_configuration(
+    double upper_arm_length,
+    double forearm_length,
+    double shoulder_angle,
+    double elbow_angle
+) {
+    if (upper_arm_length <= 0 || forearm_length <= 0) {
+        throw std::invalid_argument("Lengths must be greater than zero");
+    }
+
+    if (!std::isfinite(upper_arm_length) || !std::isfinite(forearm_length)) {
+        throw std::invalid_argument("Lengths must be finite");
+    }
+
+    if (!std::isfinite(shoulder_angle) || !std::isfinite(elbow_angle)) {
+        throw std::invalid_argument("Angles must be finite");
+    }
+}
 
 double calculate_shoulder_angle(double upper_arm_length, double forearm_length, Point2D target, double elbow_angle) {
     // hand position relative to the base when the shoulder angle is zero
@@ -34,18 +55,19 @@ Point2D calculate_endpoint(double link_length, double radians) {
 }
 } // namespace
 
+Eigen::Matrix2d jacobian(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle) {
+    validate_arm_configuration(upper_arm_length, forearm_length, shoulder_angle, elbow_angle);
+
+    Eigen::Matrix2d j = Eigen::Matrix2d::Zero();
+    j(0, 0) = -upper_arm_length * std::sin(shoulder_angle) - forearm_length * std::sin(shoulder_angle + elbow_angle);
+    j(0, 1) = -forearm_length * std::sin(shoulder_angle + elbow_angle);
+    j(1, 0) = upper_arm_length * std::cos(shoulder_angle) + forearm_length * std::cos(shoulder_angle + elbow_angle);
+    j(1, 1) = forearm_length * std::cos(shoulder_angle + elbow_angle);
+    return j;
+}
+
 ArmPose forward_kinematics(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle) {
-    if (upper_arm_length <= 0 || forearm_length <= 0) {
-        throw std::invalid_argument("Lengths must be greater than zero");
-    }
-
-    if (!std::isfinite(upper_arm_length) || !std::isfinite(forearm_length)) {
-        throw std::invalid_argument("Lengths must be finite");
-    }
-
-    if (!std::isfinite(shoulder_angle) || !std::isfinite(elbow_angle)) {
-        throw std::invalid_argument("Angles must be finite");
-    }
+    validate_arm_configuration(upper_arm_length, forearm_length, shoulder_angle, elbow_angle);
 
     Point2D elbow = calculate_endpoint(upper_arm_length, shoulder_angle);
     Point2D forearm_offset = calculate_endpoint(forearm_length, shoulder_angle + elbow_angle);

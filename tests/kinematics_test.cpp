@@ -310,3 +310,88 @@ TEST_CASE("Geometric reachability is separate from admissibility under joint lim
     CHECK(admissible == 1);
     CHECK(result.status == revolute::IKStatus::success);
 }
+
+TEST_CASE("Jacobian matches the hand-calculated straight-right pose") {
+    const auto matrix = revolute::jacobian(1, 1, 0, 0);
+    CHECK(std::abs(matrix(0, 0)) <= tolerance);
+    CHECK(std::abs(matrix(0, 1)) <= tolerance);
+    CHECK(std::abs(matrix(1, 0) - 2) <= tolerance);
+    CHECK(std::abs(matrix(1, 1) - 1) <= tolerance);
+}
+
+TEST_CASE("Jacobian columns agree with central differences of forward kinematics") {
+    struct Example {
+        double upper_length;
+        double forearm_length;
+        double shoulder;
+        double elbow;
+    };
+
+    const Example examples[] = {
+        {1, 1, 0, pi / 2},
+        {1, 1, -pi / 2, -pi / 3},
+        {1.5, 0.75, 0.7, -1.1},
+        {0.75, 1.5, -2.3, 0.4},
+        {3, 1, 2.6, 2.2},
+    };
+    // Absolute derivative tolerance in meters/radian. For these lengths and
+    // h <= 1e-4, central-difference truncation is O(h^2), about 7e-9 or less.
+    // 1e-7 also allows floating-point cancellation at the smallest step.
+    constexpr double derivative_tolerance = 1e-7;
+    for (const auto& example : examples) {
+        CAPTURE(example.upper_length);
+        CAPTURE(example.forearm_length);
+        CAPTURE(example.shoulder);
+        CAPTURE(example.elbow);
+        const auto analytical =
+            revolute::jacobian(example.upper_length, example.forearm_length, example.shoulder, example.elbow);
+        REQUIRE(analytical.allFinite());
+        for (double step : {1e-4, 1e-5, 1e-6}) {
+            CAPTURE(step);
+            for (int column = 0; column < 2; ++column) {
+                CAPTURE(column);
+                // Perturb only the joint belonging to this column.
+                double shoulder_step = column == 0 ? step : 0;
+                double elbow_step = column == 1 ? step : 0;
+                const auto plus = revolute::forward_kinematics(
+                    example.upper_length,
+                    example.forearm_length,
+                    example.shoulder + shoulder_step,
+                    example.elbow + elbow_step
+                );
+                const auto minus = revolute::forward_kinematics(
+                    example.upper_length,
+                    example.forearm_length,
+                    example.shoulder - shoulder_step,
+                    example.elbow - elbow_step
+                );
+                Eigen::Vector2d numerical{
+                    (plus.hand.x - minus.hand.x) / (2 * step),
+                    (plus.hand.y - minus.hand.y) / (2 * step)
+                };
+                REQUIRE(numerical.allFinite());
+                for (int row = 0; row < 2; ++row) {
+                    CAPTURE(row);
+                    CAPTURE(numerical(row));
+                    CAPTURE(analytical(row, column));
+                    CHECK(std::abs(numerical(row) - analytical(row, column)) <= derivative_tolerance);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Jacobian rejects invalid geometry and non-finite angles") {
+    const double infinity = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (double length : {0.0, -1.0, infinity, -infinity, nan}) {
+        CAPTURE(length);
+        CHECK_THROWS_AS(revolute::jacobian(length, 1, 0, 0), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::jacobian(1, length, 0, 0), std::invalid_argument);
+    }
+    for (double angle : {infinity, -infinity, nan}) {
+        CAPTURE(angle);
+        CHECK_THROWS_AS(revolute::jacobian(1, 1, angle, 0), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::jacobian(1, 1, 0, angle), std::invalid_argument);
+    }
+}
