@@ -30,6 +30,18 @@ FetchContent_Declare(imgui
 )
 FetchContent_MakeAvailable(glfw imgui)
 
+include(CTest)
+FetchContent_Declare(eigen
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_TAG 3.4.0
+  GIT_SHALLOW TRUE
+)
+set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+set(REVOLUTE_BUILD_TESTING ${BUILD_TESTING})
+set(BUILD_TESTING OFF)
+FetchContent_MakeAvailable(eigen)
+set(BUILD_TESTING ${REVOLUTE_BUILD_TESTING})
+
 # Dear ImGui ships source files rather than a CMake library target.
 add_library(revolute_imgui STATIC
   ${imgui_SOURCE_DIR}/imgui.cpp
@@ -48,6 +60,7 @@ target_link_libraries(revolute_imgui PUBLIC glfw OpenGL::GL)
 
 add_library(revolute_kinematics src/kinematics.cpp)
 target_include_directories(revolute_kinematics PUBLIC include)
+target_link_libraries(revolute_kinematics PUBLIC Eigen3::Eigen)
 add_executable(revolute src/main.cpp src/arm_renderer.cpp)
 
 if(APPLE)
@@ -66,20 +79,28 @@ endfunction()
 enable_project_warnings(revolute_kinematics)
 enable_project_warnings(revolute)
 
-include(CTest)
 if(BUILD_TESTING)
   FetchContent_Declare(doctest
     GIT_REPOSITORY https://github.com/doctest/doctest.git
     GIT_TAG v2.5.3
     GIT_SHALLOW TRUE
   )
+
   FetchContent_MakeAvailable(doctest)
 
   add_executable(revolute_tests tests/kinematics_test.cpp)
-  target_link_libraries(revolute_tests PRIVATE revolute_kinematics doctest::doctest)
+
+  target_link_libraries(
+    revolute_tests
+    PRIVATE
+    revolute_kinematics
+    doctest::doctest
+  )
+
   target_include_directories(revolute_tests SYSTEM PRIVATE
     $<TARGET_PROPERTY:doctest::doctest,INTERFACE_INCLUDE_DIRECTORIES>
   )
+
   enable_project_warnings(revolute_tests)
   add_test(NAME kinematics COMMAND revolute_tests)
 endif()
