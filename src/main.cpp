@@ -74,6 +74,23 @@ int main() {
         ImGui::SetNextWindowSize({CONTROLS_WIDTH, io.DisplaySize.y});
         ImVec2 screen_origin = {(io.DisplaySize.x + CONTROLS_WIDTH) / 2, io.DisplaySize.y / 2};
 
+        // obtain mouse position and check viewport bounds
+        ImVec2 mouse_pos = ImGui::GetMousePos();
+        float mx = mouse_pos.x;
+        float my = mouse_pos.y;
+        bool inside_viewport = false;
+
+        if (mx >= CONTROLS_WIDTH && mx < io.DisplaySize.x && my >= 0 && my < io.DisplaySize.y) {
+            inside_viewport = true;
+        }
+
+        if (inside_viewport && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.WantCaptureMouse == false) {
+            auto intended_target = revolute::screen_to_world(mouse_pos, screen_origin, PIXELS_PER_METER);
+            target_x = intended_target.x;
+            target_y = intended_target.y;
+            target_unreachable = false;
+        }
+
         // create control panel area
         bool controls_panel = ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
         if (controls_panel) {
