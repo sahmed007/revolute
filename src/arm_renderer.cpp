@@ -8,6 +8,7 @@ namespace revolute {
 namespace {
 const ImU32 JOINT_COLOR = IM_COL32(235, 80, 85, 255);
 const ImU32 LINK_COLOR = IM_COL32(190, 195, 205, 255);
+const ImU32 TARGET_COLOR = IM_COL32(253, 245, 203, 255);
 
 ImVec2 world_to_screen(const revolute::Point2D& world_position, const ImVec2& screen_origin, double scale) {
     double scaled_world_x = world_position.x * scale;
@@ -37,5 +38,16 @@ void draw_arm(const ArmPose& pose, const ImVec2& screen_origin, double scale) {
     // draw joints
     draw_list->AddCircleFilled(elbow, 5.0f, JOINT_COLOR);
     draw_list->AddCircleFilled(hand, 5.0f, JOINT_COLOR);
+}
+
+void draw_target(const Point2D& target, const ImVec2& screen_origin, double scale) {
+    // initialize target
+    ImVec2 screen_target = revolute::world_to_screen(target, screen_origin, scale);
+
+    // obtain pointer to the background's draw list
+    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
+
+    // draw
+    draw_list->AddCircle(screen_target, 7.0f, TARGET_COLOR, 0, 2.0f);
 }
 } // namespace revolute

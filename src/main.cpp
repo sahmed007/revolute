@@ -127,6 +127,9 @@ int main() {
         // draw arm
         revolute::draw_arm(pose, screen_origin, PIXELS_PER_METER);
 
+        // draw target
+        revolute::draw_target({.x = target_x, .y = target_y}, screen_origin, PIXELS_PER_METER);
+
         // rendering
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
