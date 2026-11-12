@@ -2,6 +2,7 @@
 #include "kinematics.hpp"
 
 #include <GLFW/glfw3.h>
+#include <cmath>
 #include <cstdlib>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -60,6 +61,9 @@ int main() {
     double target_y = 1.0;
     bool target_unreachable = false;
 
+    // IK selection state
+    int selected_solution = 0;
+
     while (!glfwWindowShouldClose(window)) {
         // clear the screen using the color state specified above
         glClear(GL_COLOR_BUFFER_BIT);
@@ -109,13 +113,17 @@ int main() {
             ImGui::InputDouble("##target_y", &target_y);
             ImGui::PopItemWidth();
 
+            ImGui::RadioButton("Positive elbow", &selected_solution, 0);
+            ImGui::RadioButton("Negative elbow", &selected_solution, 1);
+
             if (ImGui::Button("Solve IK")) {
                 auto result = revolute::inverse_kinematics(upper_arm_length, forearm_length, {target_x, target_y});
                 target_unreachable = result.status == revolute::IKStatus::unreachable;
                 if (result.status == revolute::IKStatus::success) {
-                    const auto& angles = result.solutions.front();
-                    shoulder_angle_degrees = static_cast<float>((angles.shoulder * 180) / std::numbers::pi);
-                    elbow_angle_degrees = static_cast<float>((angles.elbow * 180) / std::numbers::pi);
+                    const int solution_index = result.solutions.size() == 1 ? 0 : selected_solution;
+                    const auto& solution = result.solutions[solution_index];
+                    shoulder_angle_degrees = static_cast<float>((solution.shoulder * 180) / std::numbers::pi);
+                    elbow_angle_degrees = static_cast<float>((solution.elbow * 180) / std::numbers::pi);
                 }
             }
 
@@ -130,8 +138,11 @@ int main() {
         revolute::ArmPose pose =
             revolute::forward_kinematics(upper_arm_length, forearm_length, shoulder_angle_radians, elbow_angle_radians);
 
+        double target_error = std::hypot(target_x - pose.hand.x, target_y - pose.hand.y);
+
         if (controls_panel) {
             ImGui::Text("Hand position: (%.1f, %.1f)", pose.hand.x, pose.hand.y);
+            ImGui::Text("Target error: %.6f m", target_error);
         }
 
         ImGui::End();
