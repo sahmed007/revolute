@@ -13,6 +13,38 @@ const int CONTROLS_WIDTH = 340;
 const int PIXELS_PER_METER = 140;
 const ImU32 AXIS_COLOR = IM_COL32(75, 80, 90, 255);
 
+namespace {
+
+struct AppState {
+    // define angles
+    double upper_arm_length = 1;
+    double forearm_length = 1;
+    float shoulder_angle_degrees = 0;
+    float elbow_angle_degrees = 90;
+
+    // define target
+    double target_x = 1.0;
+    double target_y = 1.0;
+    bool target_unreachable = false;
+
+    // IK selection state
+    int selected_solution = 0;
+};
+
+void solve_target(AppState& state) {
+    auto result =
+        revolute::inverse_kinematics(state.upper_arm_length, state.forearm_length, {state.target_x, state.target_y});
+    state.target_unreachable = result.status == revolute::IKStatus::unreachable;
+    if (result.status == revolute::IKStatus::success) {
+        const int solution_index = result.solutions.size() == 1 ? 0 : state.selected_solution;
+        const auto& solution = result.solutions[solution_index];
+        state.shoulder_angle_degrees = static_cast<float>((solution.shoulder * 180) / std::numbers::pi);
+        state.elbow_angle_degrees = static_cast<float>((solution.elbow * 180) / std::numbers::pi);
+    }
+}
+
+} // namespace
+
 int main() {
     // ensure GLFW is initialized before program
     if (!glfwInit()) {
@@ -50,19 +82,7 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init();
 
-    // define angles
-    double upper_arm_length = 1;
-    double forearm_length = 1;
-    float shoulder_angle_degrees = 0;
-    float elbow_angle_degrees = 90;
-
-    // define target
-    double target_x = 1.0;
-    double target_y = 1.0;
-    bool target_unreachable = false;
-
-    // IK selection state
-    int selected_solution = 0;
+    AppState state;
 
     while (!glfwWindowShouldClose(window)) {
         // clear the screen using the color state specified above
@@ -90,9 +110,9 @@ int main() {
 
         if (inside_viewport && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.WantCaptureMouse == false) {
             auto intended_target = revolute::screen_to_world(mouse_pos, screen_origin, PIXELS_PER_METER);
-            target_x = intended_target.x;
-            target_y = intended_target.y;
-            target_unreachable = false;
+            state.target_x = intended_target.x;
+            state.target_y = intended_target.y;
+            state.target_unreachable = false;
         }
 
         // create control panel area
@@ -100,45 +120,42 @@ int main() {
         if (controls_panel) {
             ImGui::PushItemWidth(-1.0f);
             ImGui::TextUnformatted("Shoulder angle (degrees)");
-            ImGui::SliderFloat("##shoulder", &shoulder_angle_degrees, -180.0f, 180.0f);
+            ImGui::SliderFloat("##shoulder", &state.shoulder_angle_degrees, -180.0f, 180.0f);
             ImGui::TextUnformatted("Elbow angle (degrees)");
-            ImGui::SliderFloat("##elbow", &elbow_angle_degrees, -180.0f, 180.0f);
+            ImGui::SliderFloat("##elbow", &state.elbow_angle_degrees, -180.0f, 180.0f);
 
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
             ImGui::TextUnformatted("Target X (m)");
-            ImGui::InputDouble("##target_x", &target_x);
+            ImGui::InputDouble("##target_x", &state.target_x);
             ImGui::TextUnformatted("Target Y (m)");
-            ImGui::InputDouble("##target_y", &target_y);
+            ImGui::InputDouble("##target_y", &state.target_y);
             ImGui::PopItemWidth();
 
-            ImGui::RadioButton("Positive elbow", &selected_solution, 0);
-            ImGui::RadioButton("Negative elbow", &selected_solution, 1);
+            ImGui::RadioButton("Positive elbow", &state.selected_solution, 0);
+            ImGui::RadioButton("Negative elbow", &state.selected_solution, 1);
 
             if (ImGui::Button("Solve IK")) {
-                auto result = revolute::inverse_kinematics(upper_arm_length, forearm_length, {target_x, target_y});
-                target_unreachable = result.status == revolute::IKStatus::unreachable;
-                if (result.status == revolute::IKStatus::success) {
-                    const int solution_index = result.solutions.size() == 1 ? 0 : selected_solution;
-                    const auto& solution = result.solutions[solution_index];
-                    shoulder_angle_degrees = static_cast<float>((solution.shoulder * 180) / std::numbers::pi);
-                    elbow_angle_degrees = static_cast<float>((solution.elbow * 180) / std::numbers::pi);
-                }
+                solve_target(state);
             }
 
-            if (target_unreachable) {
+            if (state.target_unreachable) {
                 ImGui::TextWrapped("Target position is unreachable.");
             }
         }
 
         // calculate forward kinematics
-        auto shoulder_angle_radians = shoulder_angle_degrees * std::numbers::pi / 180;
-        auto elbow_angle_radians = elbow_angle_degrees * std::numbers::pi / 180;
-        revolute::ArmPose pose =
-            revolute::forward_kinematics(upper_arm_length, forearm_length, shoulder_angle_radians, elbow_angle_radians);
+        auto shoulder_angle_radians = state.shoulder_angle_degrees * std::numbers::pi / 180;
+        auto elbow_angle_radians = state.elbow_angle_degrees * std::numbers::pi / 180;
+        revolute::ArmPose pose = revolute::forward_kinematics(
+            state.upper_arm_length,
+            state.forearm_length,
+            shoulder_angle_radians,
+            elbow_angle_radians
+        );
 
-        double target_error = std::hypot(target_x - pose.hand.x, target_y - pose.hand.y);
+        double target_error = std::hypot(state.target_x - pose.hand.x, state.target_y - pose.hand.y);
 
         if (controls_panel) {
             ImGui::Text("Hand position: (%.1f, %.1f)", pose.hand.x, pose.hand.y);
@@ -156,7 +173,7 @@ int main() {
         revolute::draw_arm(pose, screen_origin, PIXELS_PER_METER);
 
         // draw target
-        revolute::draw_target({.x = target_x, .y = target_y}, screen_origin, PIXELS_PER_METER);
+        revolute::draw_target({.x = state.target_x, .y = state.target_y}, screen_origin, PIXELS_PER_METER);
 
         // rendering
         ImGui::Render();
