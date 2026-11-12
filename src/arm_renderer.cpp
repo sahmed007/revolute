@@ -50,4 +50,10 @@ void draw_target(const Point2D& target, const ImVec2& screen_origin, double scal
     // draw
     draw_list->AddCircle(screen_target, 7.0f, TARGET_COLOR, 0, 2.0f);
 }
+
+Point2D screen_to_world(const ImVec2& screen_position, const ImVec2& screen_origin, double scale) {
+    double world_x = (screen_position.x - screen_origin.x) / scale;
+    double world_y = (screen_origin.y - screen_position.y) / scale;
+    return Point2D{.x = world_x, .y = world_y};
+}
 } // namespace revolute
