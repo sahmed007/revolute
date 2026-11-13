@@ -395,3 +395,71 @@ TEST_CASE("Jacobian rejects invalid geometry and non-finite angles") {
         CHECK_THROWS_AS(revolute::jacobian(1, 1, 0, angle), std::invalid_argument);
     }
 }
+
+TEST_CASE("Numerical IK converges and reports the final residual") {
+    const revolute::Point2D target{1, 1};
+    auto result = revolute::num_inverse_kinematics(1, 1, target, {0.1, 1.4}, 1e-8, 100, 0.1);
+    CHECK(result.status == revolute::NumericalIKStatus::converged);
+    CHECK(result.iterations > 0);
+    CHECK(result.iterations <= 100);
+    const auto pose = revolute::forward_kinematics(1, 1, result.angles.shoulder, result.angles.elbow);
+    CHECK(distance(pose.hand, target) <= 1e-8);
+    CHECK(result.position_error == doctest::Approx(distance(pose.hand, target)));
+}
+
+TEST_CASE("Numerical IK respects zero budgets and bounds each update") {
+    auto solved = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, pi / 2}, 1e-8, 0, 0.1);
+    CHECK(solved.status == revolute::NumericalIKStatus::converged);
+    CHECK(solved.iterations == 0);
+    auto exhausted = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 0, 0.1);
+    CHECK(exhausted.status == revolute::NumericalIKStatus::iteration_limit);
+    CHECK(exhausted.iterations == 0);
+    auto step = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 1, 0.01);
+    CHECK(step.status == revolute::NumericalIKStatus::iteration_limit);
+    CHECK(step.iterations == 1);
+    CHECK(std::hypot(step.angles.shoulder, step.angles.elbow - 1) == doctest::Approx(0.01));
+    auto last = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, step.position_error + 1e-10, 1, 0.01);
+    CHECK(last.status == revolute::NumericalIKStatus::converged);
+    CHECK(last.iterations == 1);
+}
+
+TEST_CASE("Numerical IK rejects joint limit crossings without applying the update") {
+    const revolute::JointLimits limits{{0, 1}, {0, 1}};
+    auto result = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 100, 0.1, limits);
+    CHECK(result.status == revolute::NumericalIKStatus::joint_limit);
+    CHECK(result.iterations == 0);
+    CHECK(result.angles.shoulder == 0);
+    CHECK(result.angles.elbow == 1);
+    CHECK_THROWS_AS(
+        revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 0}, 1e-8, 100, 0.1, limits),
+        std::invalid_argument
+    );
+    const revolute::JointLimits reversed{{1, 1}, {0, 0}};
+    CHECK_THROWS_AS(
+        revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 0}, 1e-8, 100, 0.1, reversed),
+        std::invalid_argument
+    );
+}
+
+TEST_CASE("Numerical IK validates settings and reports numerical failure") {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (double invalid : {0.0, -1.0, nan, inf}) {
+        CHECK_THROWS_AS(
+            revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, invalid, 10, 0.1),
+            std::invalid_argument
+        );
+        CHECK_THROWS_AS(
+            revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 10, invalid),
+            std::invalid_argument
+        );
+    }
+    CHECK_THROWS_AS(revolute::num_inverse_kinematics(1, 1, {nan, 1}, {0, 1}, 1e-8, 10, 0.1), std::invalid_argument);
+    CHECK_THROWS_AS(revolute::num_inverse_kinematics(1, 1, {1, inf}, {0, 1}, 1e-8, 10, 0.1), std::invalid_argument);
+    CHECK_THROWS_AS(revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, -1, 0.1), std::invalid_argument);
+    const double huge = std::numeric_limits<double>::max();
+    auto result = revolute::num_inverse_kinematics(huge, huge, {0, 0}, {0, 0}, 1e-8, 10, 0.1);
+    CHECK(result.status == revolute::NumericalIKStatus::numerical_failure);
+    CHECK(result.iterations == 0);
+    CHECK(std::isinf(result.position_error));
+}

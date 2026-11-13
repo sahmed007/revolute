@@ -1,12 +1,20 @@
 #pragma once
 
 #include <Eigen/Core>
+#include <optional>
 #include <vector>
 
 namespace revolute {
 enum class IKStatus {
     success,
     unreachable
+};
+
+enum class NumericalIKStatus {
+    converged,
+    iteration_limit,
+    joint_limit,
+    numerical_failure
 };
 
 struct Point2D {
@@ -30,6 +38,13 @@ struct JointLimits {
     JointAngles maximum;
 };
 
+struct NumericalIKResult {
+    JointAngles angles;
+    NumericalIKStatus status;
+    int iterations;
+    double position_error;
+};
+
 struct IKResult {
     IKStatus status;
     std::vector<JointAngles> solutions;
@@ -49,4 +64,16 @@ bool within_joint_limits(JointAngles angles, JointLimits limits);
 
 // Find candidate joint angles in radians for a target in meters, without enforcing joint limits.
 IKResult inverse_kinematics(double upper_arm_length, double forearm_length, Point2D target);
+
+// Iteratively solve for joint angles using a position tolerance, an update budget, and a step limit.
+NumericalIKResult num_inverse_kinematics(
+    double upper_arm_length,
+    double forearm_length,
+    Point2D target,
+    JointAngles initial_angles,
+    double position_tolerance,
+    int max_iterations,
+    double max_step,
+    std::optional<JointLimits> limits = std::nullopt
+);
 } // namespace revolute

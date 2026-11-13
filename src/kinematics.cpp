@@ -1,10 +1,10 @@
 #include "kinematics.hpp"
 
-#include "Eigen/src/Core/Matrix.h"
-
+#include <Eigen/QR>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 
@@ -53,6 +53,115 @@ Point2D calculate_endpoint(double link_length, double radians) {
     double y = link_length * std::sin(radians);
     return Point2D{x, y};
 }
+
+void validate_numerical_ik_inputs(
+    double upper_arm_length,
+    double forearm_length,
+    Point2D target,
+    JointAngles initial_angles,
+    double position_tolerance,
+    int max_iterations,
+    double max_step,
+    std::optional<JointLimits> limits
+) {
+    validate_arm_configuration(upper_arm_length, forearm_length, initial_angles.shoulder, initial_angles.elbow);
+
+    if (!std::isfinite(max_step) || max_step <= 0.0) {
+        throw std::invalid_argument("max_step must be finite and greater than zero");
+    }
+
+    if (!std::isfinite(position_tolerance) || position_tolerance <= 0.0) {
+        throw std::invalid_argument("position_tolerance must be finite and greater than zero");
+    }
+
+    if (max_iterations < 0) {
+        throw std::invalid_argument("max_iterations must be greater than or equal to zero");
+    }
+
+    if (!std::isfinite(target.x) || !std::isfinite(target.y)) {
+        throw std::invalid_argument("Target coordinates must be finite");
+    }
+
+    if (limits) {
+        if (!std::isfinite(limits->minimum.shoulder)
+            || !std::isfinite(limits->minimum.elbow)
+            || !std::isfinite(limits->maximum.shoulder)
+            || !std::isfinite(limits->maximum.elbow)
+            || limits->minimum.shoulder > limits->maximum.shoulder
+            || limits->minimum.elbow > limits->maximum.elbow) {
+            throw std::invalid_argument("Joint limits must be finite and ordered");
+        }
+        if (!within_joint_limits(initial_angles, *limits)) {
+            throw std::invalid_argument("Initial angles must be within joint limits");
+        }
+    }
+}
+
+std::optional<Eigen::Vector2d> bounded_joint_correction(
+    const Eigen::Matrix2d& J,
+    const Eigen::Vector2d& error,
+    double max_step
+) {
+    if (!J.allFinite()) {
+        return std::nullopt;
+    }
+    Eigen::Vector2d correction = J.completeOrthogonalDecomposition().solve(error);
+    double correction_length = correction.stableNorm();
+    if (!correction.allFinite() || !std::isfinite(correction_length)) {
+        return std::nullopt;
+    }
+    if (correction_length > max_step) {
+        correction *= max_step / correction_length;
+    }
+    return correction;
+}
+
+std::optional<NumericalIKResult> check_termination(
+    JointAngles angles,
+    double position_error,
+    double position_tolerance,
+    int iterations,
+    int max_iterations
+) {
+    if (!std::isfinite(position_error)) {
+        return NumericalIKResult{
+            angles,
+            NumericalIKStatus::numerical_failure,
+            iterations,
+            std::numeric_limits<double>::infinity()
+        };
+    }
+    if (position_error <= position_tolerance) {
+        return NumericalIKResult{angles, NumericalIKStatus::converged, iterations, position_error};
+    }
+    if (iterations >= max_iterations) {
+        return NumericalIKResult{angles, NumericalIKStatus::iteration_limit, iterations, position_error};
+    }
+    return std::nullopt;
+}
+
+std::optional<JointAngles> next_joint_angles(
+    double upper_arm_length,
+    double forearm_length,
+    JointAngles angles,
+    const Eigen::Vector2d& error,
+    double max_step
+) {
+    const auto J = jacobian(upper_arm_length, forearm_length, angles.shoulder, angles.elbow);
+    const auto correction = bounded_joint_correction(J, error, max_step);
+    if (!correction) {
+        return std::nullopt;
+    }
+
+    JointAngles candidate{angles.shoulder + (*correction)(0), angles.elbow + (*correction)(1)};
+    if (!std::isfinite(candidate.shoulder)
+        || !std::isfinite(candidate.elbow)
+        || !std::isfinite(candidate.shoulder + candidate.elbow)) {
+        return std::nullopt;
+    }
+    return candidate;
+}
+
 } // namespace
 
 Eigen::Matrix2d jacobian(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle) {
@@ -140,5 +249,51 @@ IKResult inverse_kinematics(double upper_arm_length, double forearm_length, Poin
         }
     }
     return result;
+}
+
+NumericalIKResult num_inverse_kinematics(
+    double upper_arm_length,
+    double forearm_length,
+    Point2D target,
+    JointAngles initial_angles,
+    double position_tolerance,
+    int max_iterations,
+    double max_step,
+    std::optional<JointLimits> limits
+) {
+    validate_numerical_ik_inputs(
+        upper_arm_length,
+        forearm_length,
+        target,
+        initial_angles,
+        position_tolerance,
+        max_iterations,
+        max_step,
+        limits
+    );
+    JointAngles angles = initial_angles;
+    int iterations = 0;
+
+    while (true) {
+        ArmPose pose = forward_kinematics(upper_arm_length, forearm_length, angles.shoulder, angles.elbow);
+        Eigen::Vector2d error{target.x - pose.hand.x, target.y - pose.hand.y};
+        double position_error = std::hypot(error(0), error(1));
+
+        if (auto result = check_termination(angles, position_error, position_tolerance, iterations, max_iterations)) {
+            return *result;
+        }
+
+        auto candidate = next_joint_angles(upper_arm_length, forearm_length, angles, error, max_step);
+        if (!candidate) {
+            return {angles, NumericalIKStatus::numerical_failure, iterations, position_error};
+        }
+
+        if (limits && !within_joint_limits(*candidate, *limits)) {
+            return {angles, NumericalIKStatus::joint_limit, iterations, position_error};
+        }
+
+        angles = *candidate;
+        ++iterations;
+    }
 }
 } // namespace revolute
