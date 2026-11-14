@@ -463,3 +463,66 @@ TEST_CASE("Numerical IK validates settings and reports numerical failure") {
     CHECK(result.iterations == 0);
     CHECK(std::isinf(result.position_error));
 }
+
+TEST_CASE("Damped IK converges across damping values and initial guesses") {
+    for (double damping : {0.01, 0.1, 1.0}) {
+        for (revolute::JointAngles initial : {revolute::JointAngles{0.1, 1.4}, {0, 0}, {0, 1e-6}}) {
+            CAPTURE(damping);
+            CAPTURE(initial.shoulder);
+            CAPTURE(initial.elbow);
+            auto result =
+                revolute::num_inverse_kinematics(1, 1, {1, 1}, initial, 1e-8, 500, 0.1, std::nullopt, damping);
+            CHECK(result.status == revolute::NumericalIKStatus::converged);
+            CHECK(result.iterations <= 500);
+            const auto pose = revolute::forward_kinematics(1, 1, result.angles.shoulder, result.angles.elbow);
+            CHECK(distance(pose.hand, {1, 1}) <= 1e-8);
+        }
+    }
+}
+
+TEST_CASE("Stronger damping reduces an uncapped correction") {
+    auto weak = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 1, 10, std::nullopt, 0.01);
+    auto strong = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 1, 10, std::nullopt, 1.0);
+    CHECK(weak.iterations == 1);
+    CHECK(strong.iterations == 1);
+    CHECK(
+        std::hypot(strong.angles.shoulder, strong.angles.elbow - 1)
+        < std::hypot(weak.angles.shoulder, weak.angles.elbow - 1)
+    );
+}
+
+TEST_CASE("Damped IK terminates on unreachable targets and singular stagnation") {
+    for (double damping : {0.01, 0.1, 1.0}) {
+        auto unreachable =
+            revolute::num_inverse_kinematics(1, 1, {3, 0}, {0.1, 1}, 1e-8, 30, 0.1, std::nullopt, damping);
+        CHECK(unreachable.status == revolute::NumericalIKStatus::iteration_limit);
+        CHECK(unreachable.iterations == 30);
+        CHECK(std::isfinite(unreachable.position_error));
+        CHECK(unreachable.position_error >= 1.0 - 1e-12);
+        // A radial error at an exactly straight pose yields no local joint correction.
+        auto stagnant = revolute::num_inverse_kinematics(1, 1, {1, 0}, {0, 0}, 1e-8, 30, 0.1, std::nullopt, damping);
+        CHECK(stagnant.status == revolute::NumericalIKStatus::iteration_limit);
+        CHECK(stagnant.iterations == 30);
+        CHECK(stagnant.angles.shoulder == 0);
+        CHECK(stagnant.angles.elbow == 0);
+        CHECK(stagnant.position_error == 1);
+    }
+}
+
+TEST_CASE("Damped IK rejects invalid damping and handles matrix overflow") {
+    for (double damping :
+         {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()}) {
+        CHECK_THROWS_AS(
+            revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 10, 0.1, std::nullopt, damping),
+            std::invalid_argument
+        );
+    }
+    // FK and the residual are finite, but forming J-transpose times J overflows.
+    auto overflow = revolute::num_inverse_kinematics(1e200, 1e200, {0, 0}, {0, 1}, 1e-8, 10, 0.1);
+    CHECK(overflow.status == revolute::NumericalIKStatus::numerical_failure);
+    CHECK(overflow.iterations == 0);
+    CHECK(std::isfinite(overflow.position_error));
+    auto huge_damping = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 10, 0.1, std::nullopt, 1e200);
+    CHECK(huge_damping.status == revolute::NumericalIKStatus::numerical_failure);
+    CHECK(huge_damping.iterations == 0);
+}

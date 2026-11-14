@@ -1,6 +1,6 @@
 #include "kinematics.hpp"
 
-#include <Eigen/QR>
+#include <Eigen/Cholesky>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -62,9 +62,14 @@ void validate_numerical_ik_inputs(
     double position_tolerance,
     int max_iterations,
     double max_step,
-    std::optional<JointLimits> limits
+    std::optional<JointLimits> limits,
+    double damping
 ) {
     validate_arm_configuration(upper_arm_length, forearm_length, initial_angles.shoulder, initial_angles.elbow);
+
+    if (!std::isfinite(damping) || damping <= 0.0) {
+        throw std::invalid_argument("damping must be finite and greater than zero");
+    }
 
     if (!std::isfinite(max_step) || max_step <= 0.0) {
         throw std::invalid_argument("max_step must be finite and greater than zero");
@@ -100,13 +105,29 @@ void validate_numerical_ik_inputs(
 std::optional<Eigen::Vector2d> bounded_joint_correction(
     const Eigen::Matrix2d& J,
     const Eigen::Vector2d& error,
-    double max_step
+    double max_step,
+    double damping
 ) {
     if (!J.allFinite()) {
         return std::nullopt;
     }
-    Eigen::Vector2d correction = J.completeOrthogonalDecomposition().solve(error);
+
+    Eigen::Matrix2d system = J.transpose() * J + damping * damping * Eigen::Matrix2d::Identity();
+    Eigen::Vector2d rhs = J.transpose() * error;
+    if (!system.allFinite() || !rhs.allFinite()) {
+        return std::nullopt;
+    }
+
+    Eigen::LDLT<Eigen::Matrix2d> decomposition(system);
+    if (decomposition.info() != Eigen::Success
+        || !decomposition.isPositive()
+        || (decomposition.vectorD().array() <= 0.0).any()) {
+        return std::nullopt;
+    }
+
+    Eigen::Vector2d correction = decomposition.solve(rhs);
     double correction_length = correction.stableNorm();
+
     if (!correction.allFinite() || !std::isfinite(correction_length)) {
         return std::nullopt;
     }
@@ -145,10 +166,11 @@ std::optional<JointAngles> next_joint_angles(
     double forearm_length,
     JointAngles angles,
     const Eigen::Vector2d& error,
-    double max_step
+    double max_step,
+    double damping
 ) {
     const auto J = jacobian(upper_arm_length, forearm_length, angles.shoulder, angles.elbow);
-    const auto correction = bounded_joint_correction(J, error, max_step);
+    const auto correction = bounded_joint_correction(J, error, max_step, damping);
     if (!correction) {
         return std::nullopt;
     }
@@ -166,7 +188,6 @@ std::optional<JointAngles> next_joint_angles(
 
 Eigen::Matrix2d jacobian(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle) {
     validate_arm_configuration(upper_arm_length, forearm_length, shoulder_angle, elbow_angle);
-
     Eigen::Matrix2d j = Eigen::Matrix2d::Zero();
     j(0, 0) = -upper_arm_length * std::sin(shoulder_angle) - forearm_length * std::sin(shoulder_angle + elbow_angle);
     j(0, 1) = -forearm_length * std::sin(shoulder_angle + elbow_angle);
@@ -177,7 +198,6 @@ Eigen::Matrix2d jacobian(double upper_arm_length, double forearm_length, double 
 
 ArmPose forward_kinematics(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle) {
     validate_arm_configuration(upper_arm_length, forearm_length, shoulder_angle, elbow_angle);
-
     Point2D elbow = calculate_endpoint(upper_arm_length, shoulder_angle);
     Point2D forearm_offset = calculate_endpoint(forearm_length, shoulder_angle + elbow_angle);
     Point2D hand = {elbow.x + forearm_offset.x, elbow.y + forearm_offset.y};
@@ -259,7 +279,8 @@ NumericalIKResult num_inverse_kinematics(
     double position_tolerance,
     int max_iterations,
     double max_step,
-    std::optional<JointLimits> limits
+    std::optional<JointLimits> limits,
+    double damping
 ) {
     validate_numerical_ik_inputs(
         upper_arm_length,
@@ -269,7 +290,8 @@ NumericalIKResult num_inverse_kinematics(
         position_tolerance,
         max_iterations,
         max_step,
-        limits
+        limits,
+        damping
     );
     JointAngles angles = initial_angles;
     int iterations = 0;
@@ -283,7 +305,7 @@ NumericalIKResult num_inverse_kinematics(
             return *result;
         }
 
-        auto candidate = next_joint_angles(upper_arm_length, forearm_length, angles, error, max_step);
+        auto candidate = next_joint_angles(upper_arm_length, forearm_length, angles, error, max_step, damping);
         if (!candidate) {
             return {angles, NumericalIKStatus::numerical_failure, iterations, position_error};
         }

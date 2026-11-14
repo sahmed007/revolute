@@ -65,7 +65,7 @@ bool within_joint_limits(JointAngles angles, JointLimits limits);
 // Find candidate joint angles in radians for a target in meters, without enforcing joint limits.
 IKResult inverse_kinematics(double upper_arm_length, double forearm_length, Point2D target);
 
-// Iteratively solve for joint angles using a position tolerance, an update budget, and a step limit.
+// Solve with damped least squares. damping must be finite and positive (default 0.1).
 NumericalIKResult num_inverse_kinematics(
     double upper_arm_length,
     double forearm_length,
@@ -74,6 +74,7 @@ NumericalIKResult num_inverse_kinematics(
     double position_tolerance,
     int max_iterations,
     double max_step,
-    std::optional<JointLimits> limits = std::nullopt
+    std::optional<JointLimits> limits = std::nullopt,
+    double damping = 0.1
 );
 } // namespace revolute
