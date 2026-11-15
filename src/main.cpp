@@ -8,6 +8,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <numbers>
+#include <optional>
 
 const int CONTROLS_WIDTH = 340;
 const int PIXELS_PER_METER = 140;
@@ -16,6 +17,11 @@ const ImU32 AXIS_COLOR = IM_COL32(75, 80, 90, 255);
 namespace {
 
 struct AppState {
+    enum class SolverMode {
+        analytical,
+        numerical
+    };
+
     // define angles
     double upper_arm_length = 1;
     double forearm_length = 1;
@@ -29,9 +35,40 @@ struct AppState {
 
     // IK selection state
     int selected_solution = 0;
+
+    // IK solver state
+    SolverMode solver_mode = SolverMode::analytical;
+    std::optional<revolute::NumericalIKResult> numerical_result;
 };
 
 void solve_target(AppState& state) {
+    state.target_unreachable = false;
+    state.numerical_result.reset();
+
+    if (state.solver_mode == AppState::SolverMode::numerical) {
+        revolute::JointAngles initial_angles{
+            state.shoulder_angle_degrees * std::numbers::pi / 180.0,
+            state.elbow_angle_degrees * std::numbers::pi / 180.0
+        };
+
+        state.numerical_result = revolute::num_inverse_kinematics(
+            state.upper_arm_length,
+            state.forearm_length,
+            {state.target_x, state.target_y},
+            initial_angles,
+            1e-6, // position tolerance in meters
+            100,  // maximum updates
+            0.1   // maximum correction in radians
+        );
+
+        const auto& result = *state.numerical_result;
+        if (result.status == revolute::NumericalIKStatus::converged) {
+            state.shoulder_angle_degrees = static_cast<float>(result.angles.shoulder * 180.0 / std::numbers::pi);
+            state.elbow_angle_degrees = static_cast<float>(result.angles.elbow * 180.0 / std::numbers::pi);
+        }
+        return;
+    }
+
     auto result =
         revolute::inverse_kinematics(state.upper_arm_length, state.forearm_length, {state.target_x, state.target_y});
     state.target_unreachable = result.status == revolute::IKStatus::unreachable;
@@ -136,8 +173,43 @@ int main() {
             ImGui::RadioButton("Positive elbow", &state.selected_solution, 0);
             ImGui::RadioButton("Negative elbow", &state.selected_solution, 1);
 
+            if (ImGui::RadioButton("Analytical", state.solver_mode == AppState::SolverMode::analytical)) {
+                state.solver_mode = AppState::SolverMode::analytical;
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::RadioButton("Numerical", state.solver_mode == AppState::SolverMode::numerical)) {
+                state.solver_mode = AppState::SolverMode::numerical;
+            }
+
             if (ImGui::Button("Solve IK")) {
                 solve_target(state);
+            }
+
+            if (state.solver_mode == AppState::SolverMode::numerical && state.numerical_result) {
+                const auto& result = *state.numerical_result;
+
+                const char* status = "Unknown";
+                switch (result.status) {
+                case revolute::NumericalIKStatus::converged:
+                    status = "Converged";
+                    break;
+                case revolute::NumericalIKStatus::iteration_limit:
+                    status = "Iteration limit reached";
+                    break;
+                case revolute::NumericalIKStatus::joint_limit:
+                    status = "Joint limit reached";
+                    break;
+                case revolute::NumericalIKStatus::numerical_failure:
+                    status = "Numerical failure";
+                    break;
+                }
+
+                ImGui::TextUnformatted("Last numerical solve:");
+                ImGui::Text("Status: %s", status);
+                ImGui::Text("Updates: %d", result.iterations);
+                ImGui::Text("Final error: %.8f m", result.position_error);
             }
 
             if (state.target_unreachable) {
