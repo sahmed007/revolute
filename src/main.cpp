@@ -1,4 +1,5 @@
 #include "arm_renderer.hpp"
+#include "dynamics.hpp"
 #include "kinematics.hpp"
 
 #include <GLFW/glfw3.h>
@@ -13,6 +14,8 @@
 const int CONTROLS_WIDTH = 340;
 const int PIXELS_PER_METER = 140;
 const ImU32 AXIS_COLOR = IM_COL32(75, 80, 90, 255);
+constexpr double TIME_STEP = 0.01;
+const int MAX_UPDATES_PER_FRAME = 10;
 
 namespace {
 
@@ -39,6 +42,18 @@ struct AppState {
     // IK solver state
     SolverMode solver_mode = SolverMode::analytical;
     std::optional<revolute::NumericalIKResult> numerical_result;
+
+    // joint states
+    revolute::JointState shoulder_state{0, 0};
+    revolute::JointState elbow_state{std::numbers::pi / 2, 0};
+
+    // joint params
+    revolute::JointParameters shoulder_params{1.0, 0.2, 5.0};
+    revolute::JointParameters elbow_params{1.0, 0.2, 5.0};
+
+    // joint torques
+    double shoulder_torque = 0.0;
+    double elbow_torque = 0.0;
 };
 
 void solve_target(AppState& state) {
@@ -126,8 +141,40 @@ int main() {
     ImGui_ImplOpenGL3_Init();
 
     AppState state;
+    double dropped_time = 0.0;
+    double time_accumulator = 0.0;
+    double previous_time = glfwGetTime();
 
     while (!glfwWindowShouldClose(window)) {
+        double current_time = glfwGetTime();
+        int updates_this_frame = 0;
+
+        time_accumulator += current_time - previous_time;
+        previous_time = current_time;
+
+        while (time_accumulator >= TIME_STEP && updates_this_frame < MAX_UPDATES_PER_FRAME) {
+            state.shoulder_state = revolute::step_joint(
+                state.shoulder_state,
+                state.shoulder_params,
+                state.shoulder_torque,
+                TIME_STEP
+            );
+            state.elbow_state = revolute::step_joint(
+                state.elbow_state,
+                state.elbow_params,
+                state.elbow_torque,
+                TIME_STEP
+            );
+            updates_this_frame += 1;
+            time_accumulator -= TIME_STEP;
+        }
+
+        if (time_accumulator >= TIME_STEP) {
+            double remainder = std::fmod(time_accumulator, TIME_STEP);
+            dropped_time += time_accumulator - remainder;
+            time_accumulator = remainder;
+        }
+
         // clear the screen using the color state specified above
         glClear(GL_COLOR_BUFFER_BIT);
         // poll and handle events
@@ -249,6 +296,8 @@ int main() {
         if (controls_panel) {
             ImGui::Text("Hand position: (%.1f, %.1f)", pose.hand.x, pose.hand.y);
             ImGui::Text("Target error: %.6f m", target_error);
+            ImGui::Text("Updates this frame: %d", updates_this_frame);
+            ImGui::Text("Total dropped time (s): %.3f", dropped_time);
         }
 
         ImGui::End();
