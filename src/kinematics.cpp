@@ -31,7 +31,12 @@ void validate_arm_configuration(
     }
 }
 
-double calculate_shoulder_angle(double upper_arm_length, double forearm_length, Point2D target, double elbow_angle) {
+double calculate_shoulder_angle(
+    double upper_arm_length,
+    double forearm_length,
+    Point2D target,
+    double elbow_angle
+) {
     // hand position relative to the base when the shoulder angle is zero
     double local_x = upper_arm_length + forearm_length * std::cos(elbow_angle);
     double local_y = forearm_length * std::sin(elbow_angle);
@@ -65,7 +70,12 @@ void validate_numerical_ik_inputs(
     std::optional<JointLimits> limits,
     double damping
 ) {
-    validate_arm_configuration(upper_arm_length, forearm_length, initial_angles.shoulder, initial_angles.elbow);
+    validate_arm_configuration(
+        upper_arm_length,
+        forearm_length,
+        initial_angles.shoulder,
+        initial_angles.elbow
+    );
 
     if (!std::isfinite(damping) || damping <= 0.0) {
         throw std::invalid_argument("damping must be finite and greater than zero");
@@ -156,7 +166,12 @@ std::optional<NumericalIKResult> check_termination(
         return NumericalIKResult{angles, NumericalIKStatus::converged, iterations, position_error};
     }
     if (iterations >= max_iterations) {
-        return NumericalIKResult{angles, NumericalIKStatus::iteration_limit, iterations, position_error};
+        return NumericalIKResult{
+            angles,
+            NumericalIKStatus::iteration_limit,
+            iterations,
+            position_error
+        };
     }
     return std::nullopt;
 }
@@ -186,17 +201,29 @@ std::optional<JointAngles> next_joint_angles(
 
 } // namespace
 
-Eigen::Matrix2d jacobian(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle) {
+Eigen::Matrix2d jacobian(
+    double upper_arm_length,
+    double forearm_length,
+    double shoulder_angle,
+    double elbow_angle
+) {
     validate_arm_configuration(upper_arm_length, forearm_length, shoulder_angle, elbow_angle);
     Eigen::Matrix2d j = Eigen::Matrix2d::Zero();
-    j(0, 0) = -upper_arm_length * std::sin(shoulder_angle) - forearm_length * std::sin(shoulder_angle + elbow_angle);
+    j(0, 0) = -upper_arm_length * std::sin(shoulder_angle)
+        - forearm_length * std::sin(shoulder_angle + elbow_angle);
     j(0, 1) = -forearm_length * std::sin(shoulder_angle + elbow_angle);
-    j(1, 0) = upper_arm_length * std::cos(shoulder_angle) + forearm_length * std::cos(shoulder_angle + elbow_angle);
+    j(1, 0) = upper_arm_length * std::cos(shoulder_angle)
+        + forearm_length * std::cos(shoulder_angle + elbow_angle);
     j(1, 1) = forearm_length * std::cos(shoulder_angle + elbow_angle);
     return j;
 }
 
-ArmPose forward_kinematics(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle) {
+ArmPose forward_kinematics(
+    double upper_arm_length,
+    double forearm_length,
+    double shoulder_angle,
+    double elbow_angle
+) {
     validate_arm_configuration(upper_arm_length, forearm_length, shoulder_angle, elbow_angle);
     Point2D elbow = calculate_endpoint(upper_arm_length, shoulder_angle);
     Point2D forearm_offset = calculate_endpoint(forearm_length, shoulder_angle + elbow_angle);
@@ -206,7 +233,8 @@ ArmPose forward_kinematics(double upper_arm_length, double forearm_length, doubl
 
 bool reachable(double upper_arm_length, double forearm_length, Point2D target) {
     // To calculate reachability, do the following:
-    // abs(L1 - L2) <= r <= L1 + L2, where r = sqrt(x**2 + y**2) and assuming non-negative link lengths
+    // abs(L1 - L2) <= r <= L1 + L2, where r = sqrt(x**2 + y**2) and assuming non-negative link
+    // lengths
     if (upper_arm_length <= 0 || forearm_length <= 0) {
         throw std::invalid_argument("Lengths must be greater than zero");
     }
@@ -259,7 +287,8 @@ IKResult inverse_kinematics(double upper_arm_length, double forearm_length, Poin
     IKResult result{IKStatus::success, {}};
 
     for (double elbow_angle : {elbow_magnitude, -elbow_magnitude}) {
-        double shoulder_angle = calculate_shoulder_angle(upper_arm_length, forearm_length, target, elbow_angle);
+        double shoulder_angle =
+            calculate_shoulder_angle(upper_arm_length, forearm_length, target, elbow_angle);
         double normalized_angle = normalize_angle(shoulder_angle);
         result.solutions.push_back({normalized_angle, elbow_angle});
 
@@ -297,15 +326,23 @@ NumericalIKResult num_inverse_kinematics(
     int iterations = 0;
 
     while (true) {
-        ArmPose pose = forward_kinematics(upper_arm_length, forearm_length, angles.shoulder, angles.elbow);
+        ArmPose pose =
+            forward_kinematics(upper_arm_length, forearm_length, angles.shoulder, angles.elbow);
         Eigen::Vector2d error{target.x - pose.hand.x, target.y - pose.hand.y};
         double position_error = std::hypot(error(0), error(1));
 
-        if (auto result = check_termination(angles, position_error, position_tolerance, iterations, max_iterations)) {
+        if (auto result = check_termination(
+                angles,
+                position_error,
+                position_tolerance,
+                iterations,
+                max_iterations
+            )) {
             return *result;
         }
 
-        auto candidate = next_joint_angles(upper_arm_length, forearm_length, angles, error, max_step, damping);
+        auto candidate =
+            next_joint_angles(upper_arm_length, forearm_length, angles, error, max_step, damping);
         if (!candidate) {
             return {angles, NumericalIKStatus::numerical_failure, iterations, position_error};
         }

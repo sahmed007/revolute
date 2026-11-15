@@ -10,7 +10,11 @@ const ImU32 JOINT_COLOR = IM_COL32(235, 80, 85, 255);
 const ImU32 LINK_COLOR = IM_COL32(190, 195, 205, 255);
 const ImU32 TARGET_COLOR = IM_COL32(253, 245, 203, 255);
 
-ImVec2 world_to_screen(const revolute::Point2D& world_position, const ImVec2& screen_origin, double scale) {
+ImVec2 world_to_screen(
+    const revolute::Point2D& world_position,
+    const ImVec2& screen_origin,
+    double scale
+) {
     double scaled_world_x = world_position.x * scale;
     double scaled_world_y = world_position.y * scale;
     double displaced_x = screen_origin.x + scaled_world_x;

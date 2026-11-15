@@ -63,19 +63,25 @@ void solve_target(AppState& state) {
 
         const auto& result = *state.numerical_result;
         if (result.status == revolute::NumericalIKStatus::converged) {
-            state.shoulder_angle_degrees = static_cast<float>(result.angles.shoulder * 180.0 / std::numbers::pi);
-            state.elbow_angle_degrees = static_cast<float>(result.angles.elbow * 180.0 / std::numbers::pi);
+            state.shoulder_angle_degrees =
+                static_cast<float>(result.angles.shoulder * 180.0 / std::numbers::pi);
+            state.elbow_angle_degrees =
+                static_cast<float>(result.angles.elbow * 180.0 / std::numbers::pi);
         }
         return;
     }
 
-    auto result =
-        revolute::inverse_kinematics(state.upper_arm_length, state.forearm_length, {state.target_x, state.target_y});
+    auto result = revolute::inverse_kinematics(
+        state.upper_arm_length,
+        state.forearm_length,
+        {state.target_x, state.target_y}
+    );
     state.target_unreachable = result.status == revolute::IKStatus::unreachable;
     if (result.status == revolute::IKStatus::success) {
         const int solution_index = result.solutions.size() == 1 ? 0 : state.selected_solution;
         const auto& solution = result.solutions[solution_index];
-        state.shoulder_angle_degrees = static_cast<float>((solution.shoulder * 180) / std::numbers::pi);
+        state.shoulder_angle_degrees =
+            static_cast<float>((solution.shoulder * 180) / std::numbers::pi);
         state.elbow_angle_degrees = static_cast<float>((solution.elbow * 180) / std::numbers::pi);
     }
 }
@@ -145,15 +151,19 @@ int main() {
             inside_viewport = true;
         }
 
-        if (inside_viewport && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.WantCaptureMouse == false) {
-            auto intended_target = revolute::screen_to_world(mouse_pos, screen_origin, PIXELS_PER_METER);
+        if (inside_viewport
+            && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+            && io.WantCaptureMouse == false) {
+            auto intended_target =
+                revolute::screen_to_world(mouse_pos, screen_origin, PIXELS_PER_METER);
             state.target_x = intended_target.x;
             state.target_y = intended_target.y;
             state.target_unreachable = false;
         }
 
         // create control panel area
-        bool controls_panel = ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+        bool controls_panel =
+            ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
         if (controls_panel) {
             ImGui::PushItemWidth(-1.0f);
             ImGui::TextUnformatted("Shoulder angle (degrees)");
@@ -173,13 +183,19 @@ int main() {
             ImGui::RadioButton("Positive elbow", &state.selected_solution, 0);
             ImGui::RadioButton("Negative elbow", &state.selected_solution, 1);
 
-            if (ImGui::RadioButton("Analytical", state.solver_mode == AppState::SolverMode::analytical)) {
+            if (ImGui::RadioButton(
+                    "Analytical",
+                    state.solver_mode == AppState::SolverMode::analytical
+                )) {
                 state.solver_mode = AppState::SolverMode::analytical;
             }
 
             ImGui::SameLine();
 
-            if (ImGui::RadioButton("Numerical", state.solver_mode == AppState::SolverMode::numerical)) {
+            if (ImGui::RadioButton(
+                    "Numerical",
+                    state.solver_mode == AppState::SolverMode::numerical
+                )) {
                 state.solver_mode = AppState::SolverMode::numerical;
             }
 
@@ -227,7 +243,8 @@ int main() {
             elbow_angle_radians
         );
 
-        double target_error = std::hypot(state.target_x - pose.hand.x, state.target_y - pose.hand.y);
+        double target_error =
+            std::hypot(state.target_x - pose.hand.x, state.target_y - pose.hand.y);
 
         if (controls_panel) {
             ImGui::Text("Hand position: (%.1f, %.1f)", pose.hand.x, pose.hand.y);
@@ -238,14 +255,22 @@ int main() {
 
         // draw axes
         ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-        draw_list->AddLine({CONTROLS_WIDTH, screen_origin.y}, {io.DisplaySize.x, screen_origin.y}, AXIS_COLOR);
+        draw_list->AddLine(
+            {CONTROLS_WIDTH, screen_origin.y},
+            {io.DisplaySize.x, screen_origin.y},
+            AXIS_COLOR
+        );
         draw_list->AddLine({screen_origin.x, 0}, {screen_origin.x, io.DisplaySize.y}, AXIS_COLOR);
 
         // draw arm
         revolute::draw_arm(pose, screen_origin, PIXELS_PER_METER);
 
         // draw target
-        revolute::draw_target({.x = state.target_x, .y = state.target_y}, screen_origin, PIXELS_PER_METER);
+        revolute::draw_target(
+            {.x = state.target_x, .y = state.target_y},
+            screen_origin,
+            PIXELS_PER_METER
+        );
 
         // rendering
         ImGui::Render();
