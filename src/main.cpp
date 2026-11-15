@@ -3,6 +3,7 @@
 #include "kinematics.hpp"
 
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <imgui.h>
@@ -54,6 +55,14 @@ struct AppState {
     // joint torques
     double shoulder_torque = 0.0;
     double elbow_torque = 0.0;
+
+    // applied torques
+    double shoulder_applied_torque = 0.0;
+    double elbow_applied_torque = 0.0;
+
+    // sim state
+    bool paused = true;
+    double simulation_time = 0.0;
 };
 
 void solve_target(AppState& state) {
@@ -101,6 +110,32 @@ void solve_target(AppState& state) {
     }
 }
 
+void advance_simulation(AppState& state) {
+    state.shoulder_state = revolute::step_joint(
+        state.shoulder_state,
+        state.shoulder_params,
+        state.shoulder_torque,
+        TIME_STEP
+    );
+
+    state.elbow_state =
+        revolute::step_joint(state.elbow_state, state.elbow_params, state.elbow_torque, TIME_STEP);
+
+    state.shoulder_applied_torque = std::clamp(
+        state.shoulder_torque,
+        -state.shoulder_params.torque_limit,
+        state.shoulder_params.torque_limit
+    );
+
+    state.elbow_applied_torque = std::clamp(
+        state.elbow_torque,
+        -state.elbow_params.torque_limit,
+        state.elbow_params.torque_limit
+    );
+
+    state.simulation_time += TIME_STEP;
+}
+
 } // namespace
 
 int main() {
@@ -141,38 +176,26 @@ int main() {
     ImGui_ImplOpenGL3_Init();
 
     AppState state;
-    double dropped_time = 0.0;
-    double time_accumulator = 0.0;
+    revolute::SimulationClock simulation_clock;
     double previous_time = glfwGetTime();
 
     while (!glfwWindowShouldClose(window)) {
         double current_time = glfwGetTime();
         int updates_this_frame = 0;
 
-        time_accumulator += current_time - previous_time;
-        previous_time = current_time;
-
-        while (time_accumulator >= TIME_STEP && updates_this_frame < MAX_UPDATES_PER_FRAME) {
-            state.shoulder_state = revolute::step_joint(
-                state.shoulder_state,
-                state.shoulder_params,
-                state.shoulder_torque,
-                TIME_STEP
+        if (!state.paused) {
+            updates_this_frame = revolute::advance_simulation_clock(
+                simulation_clock,
+                current_time - previous_time,
+                TIME_STEP,
+                MAX_UPDATES_PER_FRAME
             );
-            state.elbow_state = revolute::step_joint(
-                state.elbow_state,
-                state.elbow_params,
-                state.elbow_torque,
-                TIME_STEP
-            );
-            updates_this_frame += 1;
-            time_accumulator -= TIME_STEP;
         }
 
-        if (time_accumulator >= TIME_STEP) {
-            double remainder = std::fmod(time_accumulator, TIME_STEP);
-            dropped_time += time_accumulator - remainder;
-            time_accumulator = remainder;
+        previous_time = current_time;
+
+        for (int update = 0; update < updates_this_frame; ++update) {
+            advance_simulation(state);
         }
 
         // clear the screen using the color state specified above
@@ -212,6 +235,26 @@ int main() {
         bool controls_panel =
             ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
         if (controls_panel) {
+            const char* sim_run_label = state.paused ? "Resume" : "Pause";
+            if (ImGui::Button(sim_run_label)) {
+                state.paused = !state.paused;
+            }
+
+            if (ImGui::Button("Step") && state.paused) {
+                advance_simulation(state);
+                updates_this_frame++;
+            }
+
+            if (ImGui::Button("Reset")) {
+                state = AppState{};
+                simulation_clock = revolute::SimulationClock();
+                previous_time = glfwGetTime();
+                updates_this_frame = 0;
+            }
+
+            ImGui::InputDouble("Shoulder torque (N·m)", &state.shoulder_torque);
+            ImGui::InputDouble("Elbow torque (N·m)", &state.elbow_torque);
+
             ImGui::PushItemWidth(-1.0f);
             ImGui::TextUnformatted("Shoulder angle (degrees)");
             ImGui::SliderFloat("##shoulder", &state.shoulder_angle_degrees, -180.0f, 180.0f);
@@ -246,9 +289,22 @@ int main() {
                 state.solver_mode = AppState::SolverMode::numerical;
             }
 
-            if (ImGui::Button("Solve IK")) {
+            if (ImGui::Button("Solve IK") && state.paused) {
                 solve_target(state);
             }
+
+            ImGui::BeginDisabled(!state.paused);
+            if (ImGui::Button("Apply pose")) {
+                state.shoulder_state = {
+                    state.shoulder_angle_degrees * std::numbers::pi / 180.0,
+                    0.0
+                };
+                state.elbow_state = {
+                    state.elbow_angle_degrees * std::numbers::pi / 180.0,
+                    0.0
+                };
+            }
+            ImGui::EndDisabled();
 
             if (state.solver_mode == AppState::SolverMode::numerical && state.numerical_result) {
                 const auto& result = *state.numerical_result;
@@ -281,13 +337,11 @@ int main() {
         }
 
         // calculate forward kinematics
-        auto shoulder_angle_radians = state.shoulder_angle_degrees * std::numbers::pi / 180;
-        auto elbow_angle_radians = state.elbow_angle_degrees * std::numbers::pi / 180;
         revolute::ArmPose pose = revolute::forward_kinematics(
             state.upper_arm_length,
             state.forearm_length,
-            shoulder_angle_radians,
-            elbow_angle_radians
+            state.shoulder_state.angle,
+            state.elbow_state.angle
         );
 
         double target_error =
@@ -297,7 +351,17 @@ int main() {
             ImGui::Text("Hand position: (%.1f, %.1f)", pose.hand.x, pose.hand.y);
             ImGui::Text("Target error: %.6f m", target_error);
             ImGui::Text("Updates this frame: %d", updates_this_frame);
-            ImGui::Text("Total dropped time (s): %.3f", dropped_time);
+            ImGui::Text("Simulation time (s): %.3f", state.simulation_time);
+            ImGui::Text("Shoulder angle (rad): %.3f", state.shoulder_state.angle);
+            ImGui::Text("Elbow angle (rad): %.3f", state.elbow_state.angle);
+            ImGui::Text(
+                "Shoulder angular velocity (rad/s): %.3f",
+                state.shoulder_state.angular_velocity
+            );
+            ImGui::Text("Elbow angular velocity (rad/s): %.3f", state.elbow_state.angular_velocity);
+            ImGui::Text("Shoulder torque (N·m): %.3f", state.shoulder_applied_torque);
+            ImGui::Text("Elbow torque (N·m): %.3f", state.elbow_applied_torque);
+            ImGui::Text("Total dropped time (s): %.3f", simulation_clock.dropped_time);
         }
 
         ImGui::End();

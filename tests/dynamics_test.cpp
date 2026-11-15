@@ -1,10 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "dynamics.hpp"
 
+#include <array>
 #include <cmath>
 #include <doctest/doctest.h>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 
@@ -177,4 +179,93 @@ TEST_CASE("Torque saturation bounds undamped acceleration over repeated steps") 
     const auto disabled = simulate({1, 0}, {2, 0, 0}, 100, 2, 200);
     CHECK(disabled.angle == 1);
     CHECK(disabled.angular_velocity == 0);
+}
+
+TEST_CASE("Frame schedules produce identical joint-state sequences without dropped time") {
+    constexpr double dt = 0.01;
+    using Pose = std::array<revolute::JointState, 2>;
+    const auto run = [&](const std::vector<double>& frames) {
+        revolute::SimulationClock clock;
+        Pose joints{{{0.2, 0.3}, {1.1, -0.2}}};
+        std::vector<Pose> trace;
+        for (double elapsed : frames) {
+            const int updates = revolute::advance_simulation_clock(clock, elapsed, dt, 10);
+            for (int update = 0; update < updates; ++update) {
+                // Commands depend on physics-step number, not rendering frequency.
+                const double shoulder_torque = trace.size() < 100 ? 2.0 : -1.0;
+                joints[0] = revolute::step_joint(joints[0], {1, 0.2, 5}, shoulder_torque, dt);
+                joints[1] = revolute::step_joint(joints[1], {2, 0.4, 3}, -0.5, dt);
+                trace.push_back(joints);
+            }
+        }
+        CHECK(clock.dropped_time == 0);
+        CHECK(std::abs(clock.accumulator) < 1e-12);
+        return trace;
+    };
+
+    const auto reference = run(std::vector<double>(200, dt));
+    REQUIRE(reference.size() == 200);
+    std::vector<std::vector<double>> schedules;
+    for (int fps : {30, 60, 144}) {
+        schedules.emplace_back(2 * fps, 1.0 / fps);
+    }
+    std::vector<double> irregular;
+    for (int pair = 0; pair < 40; ++pair) {
+        irregular.push_back(0.003);
+        irregular.push_back(0.047);
+    }
+    schedules.push_back(irregular);
+    for (const auto& frames : schedules) {
+        CAPTURE(frames.size());
+        const auto actual = run(frames);
+        REQUIRE(actual.size() == reference.size());
+        for (std::size_t step = 0; step < reference.size(); ++step) {
+            for (std::size_t joint = 0; joint < 2; ++joint) {
+                CHECK(actual[step][joint].angle == reference[step][joint].angle);
+                CHECK(actual[step][joint].angular_velocity == reference[step][joint].angular_velocity);
+            }
+        }
+    }
+}
+
+TEST_CASE("Simulation clock retains fractional time and handles exact boundaries") {
+    revolute::SimulationClock clock;
+    CHECK(revolute::advance_simulation_clock(clock, 0.007, 0.01, 10) == 0);
+    CHECK(clock.accumulator == doctest::Approx(0.007));
+    CHECK(revolute::advance_simulation_clock(clock, 0.003, 0.01, 10) == 1);
+    CHECK(std::abs(clock.accumulator) < 1e-14);
+    CHECK(revolute::advance_simulation_clock(clock, 0, 0.01, 10) == 0);
+    CHECK(revolute::advance_simulation_clock(clock, 0.1, 0.01, 10) == 10);
+    CHECK(clock.dropped_time == 0);
+    CHECK(std::abs(clock.accumulator) < 1e-14);
+}
+
+TEST_CASE("Simulation clock caps work and accounts for dropped time across frames") {
+    revolute::SimulationClock clock;
+    CHECK(revolute::advance_simulation_clock(clock, 0.337, 0.01, 10) == 10);
+    CHECK(clock.accumulator == doctest::Approx(0.007));
+    CHECK(clock.dropped_time == doctest::Approx(0.23));
+    // simulated + dropped + remainder accounts for all elapsed time.
+    CHECK(0.1 + clock.dropped_time + clock.accumulator == doctest::Approx(0.337));
+    CHECK(revolute::advance_simulation_clock(clock, 0.003, 0.01, 10) == 1);
+    CHECK(std::abs(clock.accumulator) < 1e-14);
+    CHECK(clock.dropped_time == doctest::Approx(0.23));
+    CHECK(revolute::advance_simulation_clock(clock, 0.2, 0.01, 10) == 10);
+    CHECK(clock.dropped_time == doctest::Approx(0.33));
+    CHECK(std::abs(clock.accumulator) < 1e-14);
+}
+
+TEST_CASE("Simulation clock rejects invalid timing inputs") {
+    revolute::SimulationClock clock;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (double invalid : {-1.0, nan, inf}) {
+        CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, invalid, 0.01, 10), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, 0.01, invalid, 10), std::invalid_argument);
+    }
+    CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, 0.01, 0, 10), std::invalid_argument);
+    CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, 0.01, 0.01, 0), std::invalid_argument);
+    CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, 0.01, 0.01, -1), std::invalid_argument);
+    CHECK(clock.accumulator == 0);
+    CHECK(clock.dropped_time == 0);
 }

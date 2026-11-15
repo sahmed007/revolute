@@ -37,6 +37,48 @@ void validate_joint_configurations(
 }
 } // namespace
 
+int advance_simulation_clock(SimulationClock& clock, double elapsed, double dt, int max_updates) {
+    if (!std::isfinite(elapsed) || elapsed < 0 || !std::isfinite(dt) || dt <= 0 || max_updates <= 0) {
+        throw std::invalid_argument("Invalid simulation timing inputs");
+    }
+    if (!std::isfinite(clock.accumulator) || clock.accumulator < 0
+        || !std::isfinite(clock.dropped_time) || clock.dropped_time < 0) {
+        throw std::invalid_argument("Invalid simulation clock state");
+    }
+    double accumulated = clock.accumulator + elapsed;
+    if (!std::isfinite(accumulated)) {
+        throw std::overflow_error("Accumulated simulation time overflowed");
+    }
+
+    // Treat differences below one trillionth of a step as rounding noise.
+    // Otherwise 30 FPS and 60 FPS can disagree by one update at a step boundary.
+    const double tolerance = dt * 1e-12;
+    int updates = 0;
+    while (accumulated >= dt || dt - accumulated <= tolerance) {
+        if (updates == max_updates) {
+            break;
+        }
+        accumulated = std::max(0.0, accumulated - dt);
+        ++updates;
+    }
+
+    double dropped = 0.0;
+    if (accumulated >= dt || dt - accumulated <= tolerance) {
+        double remainder = std::fmod(accumulated, dt);
+        if (dt - remainder <= tolerance) {
+            remainder = 0.0;
+        }
+        dropped = accumulated - remainder;
+        accumulated = remainder;
+    }
+    if (!std::isfinite(clock.dropped_time + dropped)) {
+        throw std::overflow_error("Dropped simulation time overflowed");
+    }
+    clock.accumulator = accumulated;
+    clock.dropped_time += dropped;
+    return updates;
+}
+
 JointState step_joint(
     JointState state,
     const JointParameters& parameters,

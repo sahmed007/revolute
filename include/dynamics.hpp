@@ -12,6 +12,16 @@ struct JointParameters {
     double torque_limit;
 };
 
+struct SimulationClock {
+    double accumulator = 0.0;
+    double dropped_time = 0.0;
+};
+
+// Consume elapsed seconds and return the number of fixed updates to run this frame.
+// Excess whole timesteps are dropped after the cap; fractional time is retained.
+// elapsed must be finite and nonnegative, dt positive, and max_updates positive.
+int advance_simulation_clock(SimulationClock& clock, double elapsed, double dt, int max_updates);
+
 // Advance one timestep using semi-implicit Euler.
 JointState step_joint(
     JointState state,
