@@ -75,3 +75,95 @@ TEST_CASE("Controllers reject non-finite inputs and negative gains") {
     CHECK_THROWS_AS(revolute::pd_torque(0, 0, 0, 5, -1), std::invalid_argument);
     CHECK(revolute::pd_torque(1, 0, 2, 0, 0) == 0);
 }
+
+TEST_CASE("PID rejects non-finite inputs without changing integral state") {
+    const revolute::PIDGains gains{5, 1, 2};
+    for (double invalid : {std::numeric_limits<double>::infinity(),
+                           -std::numeric_limits<double>::infinity(),
+                           std::numeric_limits<double>::quiet_NaN()}) {
+        revolute::ControllerState state{0.25};
+        CHECK_THROWS_AS(revolute::pid_torque(state, gains, invalid, 0, 0, 0.01, 5), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, invalid, 0, 0.01, 5), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, invalid, 0.01, 5), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, 0, invalid, 5), std::invalid_argument);
+        CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, 0, 0.01, invalid), std::invalid_argument);
+        CHECK(state.integral_error == 0.25);
+        revolute::ControllerState invalid_state{invalid};
+        CHECK_THROWS_AS(revolute::pid_torque(invalid_state, gains, 1, 0, 0, 0.01, 5), std::invalid_argument);
+    }
+}
+
+TEST_CASE("PID validates gains and positive timestep while permitting zero gains and limit") {
+    for (double invalid : {-1.0, std::numeric_limits<double>::infinity(),
+                           -std::numeric_limits<double>::infinity(),
+                           std::numeric_limits<double>::quiet_NaN()}) {
+        revolute::ControllerState state{0.25};
+        for (const revolute::PIDGains gains : {revolute::PIDGains{invalid, 1, 2},
+                                             {5, invalid, 2}, {5, 1, invalid}}) {
+            CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, 0, 0.01, 5), std::invalid_argument);
+            CHECK(state.integral_error == 0.25);
+        }
+    }
+    revolute::ControllerState state{0.25};
+    const revolute::PIDGains gains{5, 1, 2};
+    for (double dt : {0.0, -0.01}) {
+        CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, 0, dt, 5), std::invalid_argument);
+        CHECK(state.integral_error == 0.25);
+    }
+    CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, 0, 0.01, -5), std::invalid_argument);
+    CHECK(state.integral_error == 0.25);
+    CHECK(revolute::pid_torque(state, {0, 0, 0}, 1, 0, 0, 0.01, 0) == 0);
+}
+
+TEST_CASE("PID integral accumulation scales with elapsed simulation time") {
+    for (int steps : {10, 100, 1000}) {
+        revolute::ControllerState state;
+        double torque = 0;
+        for (int step = 0; step < steps; ++step) {
+            torque = revolute::pid_torque(state, {0, 2, 0}, 0.5, 0, 0, 1.0 / steps, 5);
+        }
+        CHECK(state.integral_error == doctest::Approx(0.5));
+        CHECK(torque == doctest::Approx(1.0));
+    }
+}
+
+TEST_CASE("Conditional integration prevents prolonged saturation windup in both directions") {
+    for (double direction : {-1.0, 1.0}) {
+        revolute::ControllerState state;
+        double naive_integral = 0;
+        // Hold the joint fixed, modelling a blocked actuator that cannot reach the target.
+        for (int step = 0; step < 1000; ++step) {
+            const double torque = revolute::pid_torque(state, {5, 1, 0}, direction * 10, 0, 0, 0.01, 5);
+            CHECK(torque == direction * 5);
+            CHECK(state.integral_error == 0);
+            naive_integral += direction * 10 * 0.01;
+        }
+        // A small reversed target should immediately reverse torque. A naive
+        // integrator still commands the old direction due to its stored error.
+        const double reversed_error = -direction * 0.1;
+        const double recovered = revolute::pid_torque(state, {5, 1, 0}, reversed_error, 0, 0, 0.01, 5);
+        CHECK(recovered * direction < 0);
+        CHECK(recovered == doctest::Approx(-direction * 0.501));
+        const double naive_torque = std::clamp(5 * reversed_error + naive_integral, -5.0, 5.0);
+        CHECK(naive_torque == direction * 5);
+    }
+}
+
+TEST_CASE("Conditional integration permits unwinding an existing saturated integral") {
+    for (double direction : {-1.0, 1.0}) {
+        revolute::ControllerState state{direction * 10};
+        const double torque = revolute::pid_torque(state, {0, 1, 0}, -direction, 0, 0, 0.1, 5);
+        CHECK(state.integral_error == doctest::Approx(direction * 9.9));
+        CHECK(torque == direction * 5);
+    }
+}
+
+TEST_CASE("Resetting controller state clears accumulated integral torque") {
+    revolute::ControllerState state;
+    const revolute::PIDGains gains{0, 2, 0};
+    CHECK(revolute::pid_torque(state, gains, 1, 0, 0, 0.5, 5) == 1);
+    CHECK(revolute::pid_torque(state, gains, 0, 0, 0, 0.01, 5) == 1);
+    state = revolute::ControllerState{};
+    CHECK(state.integral_error == 0);
+    CHECK(revolute::pid_torque(state, gains, 0, 0, 0, 0.01, 5) == 0);
+}

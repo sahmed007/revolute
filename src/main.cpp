@@ -63,8 +63,8 @@ struct AppState {
 
     // control
     bool position_control = false;
-    double shoulder_kp = 5.0;
-    double shoulder_kd = 0.0;
+    revolute::PIDGains shoulder_gains{5.0, 0.0, 0.0};
+    revolute::ControllerState shoulder_controller;
 
     // sim state
     bool paused = true;
@@ -118,12 +118,14 @@ void solve_target(AppState& state) {
 
 void advance_simulation(AppState& state) {
     if (state.position_control) {
-        state.shoulder_torque = revolute::pd_torque(
+        state.shoulder_torque = revolute::pid_torque(
+            state.shoulder_controller,
+            state.shoulder_gains,
             state.shoulder_angle_degrees * std::numbers::pi / 180.0,
             state.shoulder_state.angle,
             state.shoulder_state.angular_velocity,
-            state.shoulder_kp,
-            state.shoulder_kd
+            TIME_STEP,
+            state.shoulder_params.torque_limit
         );
     }
 
@@ -270,19 +272,30 @@ int main() {
 
             if (ImGui::Checkbox("Shoulder position control", &state.position_control)) {
                 state.shoulder_torque = 0.0;
+                state.shoulder_controller = revolute::ControllerState{};
             }
 
-            double edited_kp = state.shoulder_kp;
+            double edited_kp = state.shoulder_gains.kp;
             if (ImGui::InputDouble("Shoulder Kp (N·m/rad)", &edited_kp)) {
                 if (std::isfinite(edited_kp) && edited_kp >= 0.0) {
-                    state.shoulder_kp = edited_kp;
+                    state.shoulder_gains.kp = edited_kp;
+                    state.shoulder_controller = revolute::ControllerState{};
                 }
             }
 
-            double edited_kd = state.shoulder_kd;
+            double edited_ki = state.shoulder_gains.ki;
+            if (ImGui::InputDouble("Shoulder Ki (N·m/(rad·s))", &edited_ki)) {
+                if (std::isfinite(edited_ki) && edited_ki >= 0.0) {
+                    state.shoulder_gains.ki = edited_ki;
+                    state.shoulder_controller = revolute::ControllerState{};
+                }
+            }
+
+            double edited_kd = state.shoulder_gains.kd;
             if (ImGui::InputDouble("Shoulder Kd (N·m·s/rad)", &edited_kd)) {
                 if (std::isfinite(edited_kd) && edited_kd >= 0.0) {
-                    state.shoulder_kd = edited_kd;
+                    state.shoulder_gains.kd = edited_kd;
+                    state.shoulder_controller = revolute::ControllerState{};
                 }
             }
 
