@@ -1,4 +1,5 @@
 #include "arm_renderer.hpp"
+#include "control.hpp"
 #include "dynamics.hpp"
 #include "kinematics.hpp"
 
@@ -60,6 +61,11 @@ struct AppState {
     double shoulder_applied_torque = 0.0;
     double elbow_applied_torque = 0.0;
 
+    // control
+    bool position_control = false;
+    double shoulder_kp = 5.0;
+    double shoulder_kd = 0.0;
+
     // sim state
     bool paused = true;
     double simulation_time = 0.0;
@@ -111,6 +117,16 @@ void solve_target(AppState& state) {
 }
 
 void advance_simulation(AppState& state) {
+    if (state.position_control) {
+        state.shoulder_torque = revolute::pd_torque(
+            state.shoulder_angle_degrees * std::numbers::pi / 180.0,
+            state.shoulder_state.angle,
+            state.shoulder_state.angular_velocity,
+            state.shoulder_kp,
+            state.shoulder_kd
+        );
+    }
+
     state.shoulder_state = revolute::step_joint(
         state.shoulder_state,
         state.shoulder_params,
@@ -252,7 +268,28 @@ int main() {
                 updates_this_frame = 0;
             }
 
+            if (ImGui::Checkbox("Shoulder position control", &state.position_control)) {
+                state.shoulder_torque = 0.0;
+            }
+
+            double edited_kp = state.shoulder_kp;
+            if (ImGui::InputDouble("Shoulder Kp (N·m/rad)", &edited_kp)) {
+                if (std::isfinite(edited_kp) && edited_kp >= 0.0) {
+                    state.shoulder_kp = edited_kp;
+                }
+            }
+
+            double edited_kd = state.shoulder_kd;
+            if (ImGui::InputDouble("Shoulder Kd (N·m·s/rad)", &edited_kd)) {
+                if (std::isfinite(edited_kd) && edited_kd >= 0.0) {
+                    state.shoulder_kd = edited_kd;
+                }
+            }
+
+            ImGui::TextDisabled("Gains must be finite and nonnegative.");
+            ImGui::BeginDisabled(state.position_control);
             ImGui::InputDouble("Shoulder torque (N·m)", &state.shoulder_torque);
+            ImGui::EndDisabled();
             ImGui::InputDouble("Elbow torque (N·m)", &state.elbow_torque);
 
             ImGui::PushItemWidth(-1.0f);
@@ -299,10 +336,7 @@ int main() {
                     state.shoulder_angle_degrees * std::numbers::pi / 180.0,
                     0.0
                 };
-                state.elbow_state = {
-                    state.elbow_angle_degrees * std::numbers::pi / 180.0,
-                    0.0
-                };
+                state.elbow_state = {state.elbow_angle_degrees * std::numbers::pi / 180.0, 0.0};
             }
             ImGui::EndDisabled();
 

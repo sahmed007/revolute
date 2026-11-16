@@ -61,6 +61,8 @@ target_link_libraries(revolute_imgui PUBLIC glfw OpenGL::GL)
 add_library(revolute_kinematics
   src/kinematics.cpp
   src/dynamics.cpp
+  src/control.cpp
+  include/control.hpp
   include/dynamics.hpp
 )
 target_include_directories(revolute_kinematics PUBLIC include)
@@ -120,4 +122,12 @@ if(BUILD_TESTING)
   )
   enable_project_warnings(revolute_dynamics_tests)
   add_test(NAME dynamics COMMAND revolute_dynamics_tests)
+
+  add_executable(revolute_control_tests tests/control_test.cpp)
+  target_link_libraries(revolute_control_tests PRIVATE revolute_kinematics doctest::doctest)
+  target_include_directories(revolute_control_tests SYSTEM PRIVATE
+    $<TARGET_PROPERTY:doctest::doctest,INTERFACE_INCLUDE_DIRECTORIES>
+  )
+  enable_project_warnings(revolute_control_tests)
+  add_test(NAME control COMMAND revolute_control_tests)
 endif()
