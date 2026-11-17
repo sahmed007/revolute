@@ -26,6 +26,7 @@ BreakBeforeTernaryOperators: true
 # Give control flow and declarations room without adding extra brace lines.
 BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: Empty
+InsertBraces: true
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 AllowShortBlocksOnASingleLine: Never

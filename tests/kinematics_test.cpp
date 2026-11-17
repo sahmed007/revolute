@@ -1,5 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "kinematics.hpp"
+#include "revolute/core/kinematics.hpp"
 
 #include <cmath>
 #include <doctest/doctest.h>
@@ -169,15 +169,25 @@ void check_ik_candidates(
         CHECK(angles.shoulder <= pi);
         CHECK(angles.elbow >= -pi);
         CHECK(angles.elbow <= pi);
-        const auto pose = revolute::forward_kinematics(upper_length, forearm_length, angles.shoulder, angles.elbow);
+        const auto pose = revolute::forward_kinematics(
+            upper_length,
+            forearm_length,
+            angles.shoulder,
+            angles.elbow
+        );
         check_point(pose.hand, target);
     }
     if (result.solutions.size() == 2) {
         const auto first = result.solutions[0];
         const auto second = result.solutions[1];
-        const auto first_pose = revolute::forward_kinematics(upper_length, forearm_length, first.shoulder, first.elbow);
-        const auto second_pose =
-            revolute::forward_kinematics(upper_length, forearm_length, second.shoulder, second.elbow);
+        const auto first_pose =
+            revolute::forward_kinematics(upper_length, forearm_length, first.shoulder, first.elbow);
+        const auto second_pose = revolute::forward_kinematics(
+            upper_length,
+            forearm_length,
+            second.shoulder,
+            second.elbow
+        );
         // Distinct elbow positions prove these are two physical configurations.
         CHECK(distance(first_pose.elbow, second_pose.elbow) > tolerance);
     }
@@ -220,7 +230,8 @@ TEST_CASE("IK handles inner and outer boundaries and their neighborhoods") {
         unsigned count;
     };
 
-    const Example examples[] = {{0, 0}, {2 - 1e-6, 0}, {2, 1}, {2 + 1e-6, 2}, {4 - 1e-6, 2}, {4, 1}, {4 + 1e-6, 0}};
+    const Example examples[] =
+        {{0, 0}, {2 - 1e-6, 0}, {2, 1}, {2 + 1e-6, 2}, {4 - 1e-6, 2}, {4, 1}, {4 + 1e-6, 0}};
     for (double upper_length : {1.0, 3.0}) {
         double forearm_length = 4 - upper_length;
         for (auto example : examples) {
@@ -229,14 +240,18 @@ TEST_CASE("IK handles inner and outer boundaries and their neighborhoods") {
                   revolute::Point2D{-1, 0},
                   revolute::Point2D{0, 1},
                   revolute::Point2D{0, -1}}) {
-                revolute::Point2D target{direction.x * example.radius, direction.y * example.radius};
+                revolute::Point2D target{
+                    direction.x * example.radius,
+                    direction.y * example.radius
+                };
                 CAPTURE(upper_length);
                 CAPTURE(target.x);
                 CAPTURE(target.y);
                 auto result = revolute::inverse_kinematics(upper_length, forearm_length, target);
                 CHECK(
                     result.status
-                    == (example.count == 0 ? revolute::IKStatus::unreachable : revolute::IKStatus::success)
+                    == (example.count == 0 ? revolute::IKStatus::unreachable
+                                           : revolute::IKStatus::success)
                 );
                 REQUIRE(result.solutions.size() == example.count);
                 check_ik_candidates(upper_length, forearm_length, target, result);
@@ -343,8 +358,12 @@ TEST_CASE("Jacobian columns agree with central differences of forward kinematics
         CAPTURE(example.forearm_length);
         CAPTURE(example.shoulder);
         CAPTURE(example.elbow);
-        const auto analytical =
-            revolute::jacobian(example.upper_length, example.forearm_length, example.shoulder, example.elbow);
+        const auto analytical = revolute::jacobian(
+            example.upper_length,
+            example.forearm_length,
+            example.shoulder,
+            example.elbow
+        );
         REQUIRE(analytical.allFinite());
         for (double step : {1e-4, 1e-5, 1e-6}) {
             CAPTURE(step);
@@ -374,7 +393,9 @@ TEST_CASE("Jacobian columns agree with central differences of forward kinematics
                     CAPTURE(row);
                     CAPTURE(numerical(row));
                     CAPTURE(analytical(row, column));
-                    CHECK(std::abs(numerical(row) - analytical(row, column)) <= derivative_tolerance);
+                    CHECK(
+                        std::abs(numerical(row) - analytical(row, column)) <= derivative_tolerance
+                    );
                 }
             }
         }
@@ -402,7 +423,8 @@ TEST_CASE("Numerical IK converges and reports the final residual") {
     CHECK(result.status == revolute::NumericalIKStatus::converged);
     CHECK(result.iterations > 0);
     CHECK(result.iterations <= 100);
-    const auto pose = revolute::forward_kinematics(1, 1, result.angles.shoulder, result.angles.elbow);
+    const auto pose =
+        revolute::forward_kinematics(1, 1, result.angles.shoulder, result.angles.elbow);
     CHECK(distance(pose.hand, target) <= 1e-8);
     CHECK(result.position_error == doctest::Approx(distance(pose.hand, target)));
 }
@@ -418,7 +440,15 @@ TEST_CASE("Numerical IK respects zero budgets and bounds each update") {
     CHECK(step.status == revolute::NumericalIKStatus::iteration_limit);
     CHECK(step.iterations == 1);
     CHECK(std::hypot(step.angles.shoulder, step.angles.elbow - 1) == doctest::Approx(0.01));
-    auto last = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, step.position_error + 1e-10, 1, 0.01);
+    auto last = revolute::num_inverse_kinematics(
+        1,
+        1,
+        {1, 1},
+        {0, 1},
+        step.position_error + 1e-10,
+        1,
+        0.01
+    );
     CHECK(last.status == revolute::NumericalIKStatus::converged);
     CHECK(last.iterations == 1);
 }
@@ -454,9 +484,18 @@ TEST_CASE("Numerical IK validates settings and reports numerical failure") {
             std::invalid_argument
         );
     }
-    CHECK_THROWS_AS(revolute::num_inverse_kinematics(1, 1, {nan, 1}, {0, 1}, 1e-8, 10, 0.1), std::invalid_argument);
-    CHECK_THROWS_AS(revolute::num_inverse_kinematics(1, 1, {1, inf}, {0, 1}, 1e-8, 10, 0.1), std::invalid_argument);
-    CHECK_THROWS_AS(revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, -1, 0.1), std::invalid_argument);
+    CHECK_THROWS_AS(
+        revolute::num_inverse_kinematics(1, 1, {nan, 1}, {0, 1}, 1e-8, 10, 0.1),
+        std::invalid_argument
+    );
+    CHECK_THROWS_AS(
+        revolute::num_inverse_kinematics(1, 1, {1, inf}, {0, 1}, 1e-8, 10, 0.1),
+        std::invalid_argument
+    );
+    CHECK_THROWS_AS(
+        revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, -1, 0.1),
+        std::invalid_argument
+    );
     const double huge = std::numeric_limits<double>::max();
     auto result = revolute::num_inverse_kinematics(huge, huge, {0, 0}, {0, 0}, 1e-8, 10, 0.1);
     CHECK(result.status == revolute::NumericalIKStatus::numerical_failure);
@@ -470,19 +509,31 @@ TEST_CASE("Damped IK converges across damping values and initial guesses") {
             CAPTURE(damping);
             CAPTURE(initial.shoulder);
             CAPTURE(initial.elbow);
-            auto result =
-                revolute::num_inverse_kinematics(1, 1, {1, 1}, initial, 1e-8, 500, 0.1, std::nullopt, damping);
+            auto result = revolute::num_inverse_kinematics(
+                1,
+                1,
+                {1, 1},
+                initial,
+                1e-8,
+                500,
+                0.1,
+                std::nullopt,
+                damping
+            );
             CHECK(result.status == revolute::NumericalIKStatus::converged);
             CHECK(result.iterations <= 500);
-            const auto pose = revolute::forward_kinematics(1, 1, result.angles.shoulder, result.angles.elbow);
+            const auto pose =
+                revolute::forward_kinematics(1, 1, result.angles.shoulder, result.angles.elbow);
             CHECK(distance(pose.hand, {1, 1}) <= 1e-8);
         }
     }
 }
 
 TEST_CASE("Stronger damping reduces an uncapped correction") {
-    auto weak = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 1, 10, std::nullopt, 0.01);
-    auto strong = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 1, 10, std::nullopt, 1.0);
+    auto weak =
+        revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 1, 10, std::nullopt, 0.01);
+    auto strong =
+        revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 1, 10, std::nullopt, 1.0);
     CHECK(weak.iterations == 1);
     CHECK(strong.iterations == 1);
     CHECK(
@@ -493,14 +544,33 @@ TEST_CASE("Stronger damping reduces an uncapped correction") {
 
 TEST_CASE("Damped IK terminates on unreachable targets and singular stagnation") {
     for (double damping : {0.01, 0.1, 1.0}) {
-        auto unreachable =
-            revolute::num_inverse_kinematics(1, 1, {3, 0}, {0.1, 1}, 1e-8, 30, 0.1, std::nullopt, damping);
+        auto unreachable = revolute::num_inverse_kinematics(
+            1,
+            1,
+            {3, 0},
+            {0.1, 1},
+            1e-8,
+            30,
+            0.1,
+            std::nullopt,
+            damping
+        );
         CHECK(unreachable.status == revolute::NumericalIKStatus::iteration_limit);
         CHECK(unreachable.iterations == 30);
         CHECK(std::isfinite(unreachable.position_error));
         CHECK(unreachable.position_error >= 1.0 - 1e-12);
         // A radial error at an exactly straight pose yields no local joint correction.
-        auto stagnant = revolute::num_inverse_kinematics(1, 1, {1, 0}, {0, 0}, 1e-8, 30, 0.1, std::nullopt, damping);
+        auto stagnant = revolute::num_inverse_kinematics(
+            1,
+            1,
+            {1, 0},
+            {0, 0},
+            1e-8,
+            30,
+            0.1,
+            std::nullopt,
+            damping
+        );
         CHECK(stagnant.status == revolute::NumericalIKStatus::iteration_limit);
         CHECK(stagnant.iterations == 30);
         CHECK(stagnant.angles.shoulder == 0);
@@ -511,9 +581,13 @@ TEST_CASE("Damped IK terminates on unreachable targets and singular stagnation")
 
 TEST_CASE("Damped IK rejects invalid damping and handles matrix overflow") {
     for (double damping :
-         {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()}) {
+         {0.0,
+          -1.0,
+          std::numeric_limits<double>::quiet_NaN(),
+          std::numeric_limits<double>::infinity()}) {
         CHECK_THROWS_AS(
-            revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 10, 0.1, std::nullopt, damping),
+            revolute::
+                num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 10, 0.1, std::nullopt, damping),
             std::invalid_argument
         );
     }
@@ -522,7 +596,8 @@ TEST_CASE("Damped IK rejects invalid damping and handles matrix overflow") {
     CHECK(overflow.status == revolute::NumericalIKStatus::numerical_failure);
     CHECK(overflow.iterations == 0);
     CHECK(std::isfinite(overflow.position_error));
-    auto huge_damping = revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 10, 0.1, std::nullopt, 1e200);
+    auto huge_damping =
+        revolute::num_inverse_kinematics(1, 1, {1, 1}, {0, 1}, 1e-8, 10, 0.1, std::nullopt, 1e200);
     CHECK(huge_damping.status == revolute::NumericalIKStatus::numerical_failure);
     CHECK(huge_damping.iterations == 0);
 }

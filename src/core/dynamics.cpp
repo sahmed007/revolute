@@ -1,4 +1,4 @@
-#include "dynamics.hpp"
+#include "revolute/core/dynamics.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -38,11 +38,17 @@ void validate_joint_configurations(
 } // namespace
 
 int advance_simulation_clock(SimulationClock& clock, double elapsed, double dt, int max_updates) {
-    if (!std::isfinite(elapsed) || elapsed < 0 || !std::isfinite(dt) || dt <= 0 || max_updates <= 0) {
+    if (!std::isfinite(elapsed)
+        || elapsed < 0
+        || !std::isfinite(dt)
+        || dt <= 0
+        || max_updates <= 0) {
         throw std::invalid_argument("Invalid simulation timing inputs");
     }
-    if (!std::isfinite(clock.accumulator) || clock.accumulator < 0
-        || !std::isfinite(clock.dropped_time) || clock.dropped_time < 0) {
+    if (!std::isfinite(clock.accumulator)
+        || clock.accumulator < 0
+        || !std::isfinite(clock.dropped_time)
+        || clock.dropped_time < 0) {
         throw std::invalid_argument("Invalid simulation clock state");
     }
     double accumulated = clock.accumulator + elapsed;

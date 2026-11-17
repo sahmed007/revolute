@@ -1,6 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "control.hpp"
-#include "dynamics.hpp"
+#include "revolute/core/control.hpp"
+#include "revolute/core/dynamics.hpp"
 
 #include <algorithm>
 #include <doctest/doctest.h>
@@ -19,8 +19,7 @@ TEST_CASE("Derivative torque opposes velocity even at the target") {
     CHECK(revolute::pd_torque(0.5, 0.5, 2, 5, 3) == -6);
     CHECK(revolute::pd_torque(0.5, 0.5, -2, 5, 3) == 6);
     CHECK(revolute::pd_torque(0.5, 0.5, 0, 5, 3) == 0);
-    CHECK(revolute::pd_torque(0.8, 0.2, 2, 5, 0)
-        == revolute::proportional_torque(0.8, 0.2, 5));
+    CHECK(revolute::pd_torque(0.8, 0.2, 2, 5, 0) == revolute::proportional_torque(0.8, 0.2, 5));
 }
 
 TEST_CASE("A target step changes P torque without derivative kick") {
@@ -40,7 +39,8 @@ TEST_CASE("PD reduces overshoot in a repeatable joint step response") {
         const revolute::JointParameters parameters{1, 0.2, 5};
         double peak = 0;
         for (int step = 0; step < 1000; ++step) {
-            const double torque = revolute::pd_torque(0.5, state.angle, state.angular_velocity, 5, kd);
+            const double torque =
+                revolute::pd_torque(0.5, state.angle, state.angular_velocity, 5, kd);
             state = revolute::step_joint(state, parameters, torque, 0.01);
             peak = std::max(peak, state.angle);
         }
@@ -58,9 +58,10 @@ TEST_CASE("PD reduces overshoot in a repeatable joint step response") {
 }
 
 TEST_CASE("Controllers reject non-finite inputs and negative gains") {
-    for (double invalid : {std::numeric_limits<double>::infinity(),
-                           -std::numeric_limits<double>::infinity(),
-                           std::numeric_limits<double>::quiet_NaN()}) {
+    for (double invalid :
+         {std::numeric_limits<double>::infinity(),
+          -std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::quiet_NaN()}) {
         CHECK_THROWS_AS(revolute::proportional_torque(invalid, 0, 5), std::invalid_argument);
         CHECK_THROWS_AS(revolute::proportional_torque(0, invalid, 5), std::invalid_argument);
         CHECK_THROWS_AS(revolute::proportional_torque(0, 0, invalid), std::invalid_argument);
@@ -78,29 +79,53 @@ TEST_CASE("Controllers reject non-finite inputs and negative gains") {
 
 TEST_CASE("PID rejects non-finite inputs without changing integral state") {
     const revolute::PIDGains gains{5, 1, 2};
-    for (double invalid : {std::numeric_limits<double>::infinity(),
-                           -std::numeric_limits<double>::infinity(),
-                           std::numeric_limits<double>::quiet_NaN()}) {
+    for (double invalid :
+         {std::numeric_limits<double>::infinity(),
+          -std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::quiet_NaN()}) {
         revolute::ControllerState state{0.25};
-        CHECK_THROWS_AS(revolute::pid_torque(state, gains, invalid, 0, 0, 0.01, 5), std::invalid_argument);
-        CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, invalid, 0, 0.01, 5), std::invalid_argument);
-        CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, invalid, 0.01, 5), std::invalid_argument);
-        CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, 0, invalid, 5), std::invalid_argument);
-        CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, 0, 0.01, invalid), std::invalid_argument);
+        CHECK_THROWS_AS(
+            revolute::pid_torque(state, gains, invalid, 0, 0, 0.01, 5),
+            std::invalid_argument
+        );
+        CHECK_THROWS_AS(
+            revolute::pid_torque(state, gains, 1, invalid, 0, 0.01, 5),
+            std::invalid_argument
+        );
+        CHECK_THROWS_AS(
+            revolute::pid_torque(state, gains, 1, 0, invalid, 0.01, 5),
+            std::invalid_argument
+        );
+        CHECK_THROWS_AS(
+            revolute::pid_torque(state, gains, 1, 0, 0, invalid, 5),
+            std::invalid_argument
+        );
+        CHECK_THROWS_AS(
+            revolute::pid_torque(state, gains, 1, 0, 0, 0.01, invalid),
+            std::invalid_argument
+        );
         CHECK(state.integral_error == 0.25);
         revolute::ControllerState invalid_state{invalid};
-        CHECK_THROWS_AS(revolute::pid_torque(invalid_state, gains, 1, 0, 0, 0.01, 5), std::invalid_argument);
+        CHECK_THROWS_AS(
+            revolute::pid_torque(invalid_state, gains, 1, 0, 0, 0.01, 5),
+            std::invalid_argument
+        );
     }
 }
 
 TEST_CASE("PID validates gains and positive timestep while permitting zero gains and limit") {
-    for (double invalid : {-1.0, std::numeric_limits<double>::infinity(),
-                           -std::numeric_limits<double>::infinity(),
-                           std::numeric_limits<double>::quiet_NaN()}) {
+    for (double invalid :
+         {-1.0,
+          std::numeric_limits<double>::infinity(),
+          -std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::quiet_NaN()}) {
         revolute::ControllerState state{0.25};
-        for (const revolute::PIDGains gains : {revolute::PIDGains{invalid, 1, 2},
-                                             {5, invalid, 2}, {5, 1, invalid}}) {
-            CHECK_THROWS_AS(revolute::pid_torque(state, gains, 1, 0, 0, 0.01, 5), std::invalid_argument);
+        for (const revolute::PIDGains gains :
+             {revolute::PIDGains{invalid, 1, 2}, {5, invalid, 2}, {5, 1, invalid}}) {
+            CHECK_THROWS_AS(
+                revolute::pid_torque(state, gains, 1, 0, 0, 0.01, 5),
+                std::invalid_argument
+            );
             CHECK(state.integral_error == 0.25);
         }
     }
@@ -133,7 +158,8 @@ TEST_CASE("Conditional integration prevents prolonged saturation windup in both 
         double naive_integral = 0;
         // Hold the joint fixed, modelling a blocked actuator that cannot reach the target.
         for (int step = 0; step < 1000; ++step) {
-            const double torque = revolute::pid_torque(state, {5, 1, 0}, direction * 10, 0, 0, 0.01, 5);
+            const double torque =
+                revolute::pid_torque(state, {5, 1, 0}, direction * 10, 0, 0, 0.01, 5);
             CHECK(torque == direction * 5);
             CHECK(state.integral_error == 0);
             naive_integral += direction * 10 * 0.01;
@@ -141,7 +167,8 @@ TEST_CASE("Conditional integration prevents prolonged saturation windup in both 
         // A small reversed target should immediately reverse torque. A naive
         // integrator still commands the old direction due to its stored error.
         const double reversed_error = -direction * 0.1;
-        const double recovered = revolute::pid_torque(state, {5, 1, 0}, reversed_error, 0, 0, 0.01, 5);
+        const double recovered =
+            revolute::pid_torque(state, {5, 1, 0}, reversed_error, 0, 0, 0.01, 5);
         CHECK(recovered * direction < 0);
         CHECK(recovered == doctest::Approx(-direction * 0.501));
         const double naive_torque = std::clamp(5 * reversed_error + naive_integral, -5.0, 5.0);

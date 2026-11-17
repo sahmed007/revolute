@@ -50,11 +50,23 @@ struct IKResult {
     std::vector<JointAngles> solutions;
 };
 
-// Calculate the 2×2 hand-position Jacobian, with x/y rows and shoulder/elbow columns, in meters per radian.
-Eigen::Matrix2d jacobian(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle);
+// Calculate the 2×2 hand-position Jacobian, with x/y rows and shoulder/elbow columns, in meters per
+// radian.
+Eigen::Matrix2d jacobian(
+    double upper_arm_length,
+    double forearm_length,
+    double shoulder_angle,
+    double elbow_angle
+);
 
-// Calculate base, elbow, and hand positions in meters from link lengths and joint angles in radians.
-ArmPose forward_kinematics(double upper_arm_length, double forearm_length, double shoulder_angle, double elbow_angle);
+// Calculate base, elbow, and hand positions in meters from link lengths and joint angles in
+// radians.
+ArmPose forward_kinematics(
+    double upper_arm_length,
+    double forearm_length,
+    double shoulder_angle,
+    double elbow_angle
+);
 
 // Check whether the target lies within the arm's geometric reach, independent of joint limits.
 bool reachable(double upper_arm_length, double forearm_length, Point2D target);

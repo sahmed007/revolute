@@ -1,5 +1,5 @@
-#include "control.hpp"
-#include "dynamics.hpp"
+#include "revolute/core/control.hpp"
+#include "revolute/core/dynamics.hpp"
 
 #include <algorithm>
 #include <array>
@@ -47,8 +47,13 @@ std::array<Metrics, 2> track(const Scenario& scenario, double dt) {
         for (std::size_t joint = 0; joint < 2; ++joint) {
             const auto& parameters = scenario.parameters[joint];
             const double torque = revolute::pid_torque(
-                controllers[joint], gains[joint], targets[joint], joints[joint].angle,
-                joints[joint].angular_velocity, dt, parameters.torque_limit
+                controllers[joint],
+                gains[joint],
+                targets[joint],
+                joints[joint].angle,
+                joints[joint].angular_velocity,
+                dt,
+                parameters.torque_limit
             );
             joints[joint] = revolute::step_joint(joints[joint], parameters, torque, dt);
             auto& result = metrics[joint];
@@ -74,11 +79,11 @@ std::array<Metrics, 2> track(const Scenario& scenario, double dt) {
 } // namespace
 
 TEST_CASE("Both PID joints meet tracking thresholds across dynamics and timesteps") {
-    const std::array<Scenario, 3> scenarios{{
-        {"nominal", {{{1, 0.2, 5}, {1, 0.2, 5}}}, false},
-        {"altered", {{{2, 0.1, 5}, {0.5, 0.6, 5}}}, false},
-        {"disturbed", {{{1, 0.2, 5}, {1, 0.2, 5}}}, true}
-    }};
+    const std::array<Scenario, 3> scenarios{
+        {{"nominal", {{{1, 0.2, 5}, {1, 0.2, 5}}}, false},
+         {"altered", {{{2, 0.1, 5}, {0.5, 0.6, 5}}}, false},
+         {"disturbed", {{{1, 0.2, 5}, {1, 0.2, 5}}}, true}}
+    };
     for (const auto& scenario : scenarios) {
         for (double dt : {0.02, 0.01, 0.005}) {
             const auto results = track(scenario, dt);
@@ -93,12 +98,21 @@ TEST_CASE("Both PID joints meet tracking thresholds across dynamics and timestep
                 CHECK(result.overshoot < 0.10);
                 CHECK(result.peak_torque <= scenario.parameters[joint].torque_limit);
                 if (dt == 0.01) {
-                    std::cout << scenario.name << " joint=" << joint
-                              << " final_deg=" << result.final_error * degrees
-                              << " tail_max_deg=" << result.tail_error * degrees
-                              << " overshoot_pct=" << result.overshoot * 100
-                              << " settled_s=" << result.settling_time
-                              << " peak_torque=" << result.peak_torque << '\n';
+                    std::cout
+                        << scenario.name
+                        << " joint="
+                        << joint
+                        << " final_deg="
+                        << result.final_error * degrees
+                        << " tail_max_deg="
+                        << result.tail_error * degrees
+                        << " overshoot_pct="
+                        << result.overshoot * 100
+                        << " settled_s="
+                        << result.settling_time
+                        << " peak_torque="
+                        << result.peak_torque
+                        << '\n';
                 }
             }
         }

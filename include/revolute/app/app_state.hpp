@@ -1,15 +1,16 @@
 #pragma once
 
-#include "control.hpp"
-#include "dynamics.hpp"
-#include "kinematics.hpp"
+#include "revolute/core/control.hpp"
+#include "revolute/core/dynamics.hpp"
+#include "revolute/core/kinematics.hpp"
 
 #include <cstddef>
 #include <deque>
 #include <numbers>
 #include <optional>
+#include <string>
 
-namespace revolute {
+namespace revolute::app {
 
 inline constexpr double TIME_STEP = 0.01;
 inline constexpr int MAX_UPDATES_PER_FRAME = 10;
@@ -35,6 +36,23 @@ struct AppState {
         numerical
     };
 
+    enum class Task {
+        pose,
+        position_control,
+        manual_torque
+    };
+    enum class TargetSource {
+        joint_angles,
+        cartesian
+    };
+    Task task = Task::pose;
+    TargetSource target_source = TargetSource::joint_angles;
+    JointAngles active_target{0, std::numbers::pi / 2};
+    bool target_pending = true;
+    bool action_failed = false;
+    std::string action_message;
+
+    // Editable targets; simulation uses active_target.
     // define angles
     double upper_arm_length = 1;
     double forearm_length = 1;
@@ -70,7 +88,6 @@ struct AppState {
     double elbow_applied_torque = 0.0;
 
     // control
-    bool position_control = false;
     revolute::PIDGains shoulder_gains{5.0, 0.0, 0.0};
     revolute::PIDGains elbow_gains{5.0, 0.0, 0.0};
     revolute::ControllerState shoulder_controller;
@@ -84,4 +101,4 @@ struct AppState {
     std::deque<SimulationSample> history;
 };
 
-} // namespace revolute
+} // namespace revolute::app

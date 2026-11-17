@@ -71,18 +71,28 @@ target_include_directories(revolute_implot SYSTEM PUBLIC ${implot_SOURCE_DIR})
 target_link_libraries(revolute_implot PUBLIC revolute_imgui)
 
 add_library(revolute_kinematics
-  src/kinematics.cpp
-  src/dynamics.cpp
-  src/control.cpp
-  include/control.hpp
-  include/dynamics.hpp
+  src/core/kinematics.cpp
+  src/core/dynamics.cpp
+  src/core/control.cpp
+  include/revolute/core/control.hpp
+  include/revolute/core/dynamics.hpp
 )
 target_include_directories(revolute_kinematics PUBLIC include)
 target_link_libraries(revolute_kinematics PUBLIC Eigen3::Eigen)
-add_library(revolute_simulation src/simulation.cpp)
+add_library(revolute_simulation src/app/simulation.cpp)
 target_link_libraries(revolute_simulation PUBLIC revolute_kinematics)
 
-add_executable(revolute src/main.cpp src/arm_renderer.cpp src/controls.cpp src/plots.cpp)
+add_executable(revolute
+  src/main.cpp src/ui/arm_renderer.cpp src/ui/controls.cpp src/ui/plots.cpp
+  src/ui/ui_theme.cpp src/ui/workspace.cpp
+)
+
+# Use a configured absolute path so launching from another directory still finds the font.
+configure_file(assets/fonts/Iosevka-Extended.ttf
+  ${CMAKE_CURRENT_BINARY_DIR}/assets/fonts/Iosevka-Extended.ttf COPYONLY)
+target_compile_definitions(revolute PRIVATE
+  REVOLUTE_FONT_PATH="${CMAKE_CURRENT_BINARY_DIR}/assets/fonts/Iosevka-Extended.ttf"
+)
 
 if(APPLE)
   target_compile_definitions(revolute PRIVATE GL_SILENCE_DEPRECATION)

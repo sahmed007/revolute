@@ -1,4 +1,4 @@
-#include "control.hpp"
+#include "revolute/core/control.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -16,13 +16,18 @@ void validate_pid_inputs(
     double dt,
     double torque_limit
 ) {
-    if (!std::isfinite(target_angle) || !std::isfinite(current_angle)
-        || !std::isfinite(angular_velocity) || !std::isfinite(state.integral_error)) {
+    if (!std::isfinite(target_angle)
+        || !std::isfinite(current_angle)
+        || !std::isfinite(angular_velocity)
+        || !std::isfinite(state.integral_error)) {
         throw std::invalid_argument("Angles, angular velocity, and integral error must be finite");
     }
-    if (!std::isfinite(gains.kp) || gains.kp < 0.0
-        || !std::isfinite(gains.ki) || gains.ki < 0.0
-        || !std::isfinite(gains.kd) || gains.kd < 0.0) {
+    if (!std::isfinite(gains.kp)
+        || gains.kp < 0.0
+        || !std::isfinite(gains.ki)
+        || gains.ki < 0.0
+        || !std::isfinite(gains.kd)
+        || gains.kd < 0.0) {
         throw std::invalid_argument("PID gains must be finite and nonnegative");
     }
     if (!std::isfinite(torque_limit) || torque_limit < 0.0) {
@@ -70,7 +75,15 @@ double pid_torque(
     double dt,
     double torque_limit
 ) {
-    validate_pid_inputs(state, gains, target_angle, current_angle, angular_velocity, dt, torque_limit);
+    validate_pid_inputs(
+        state,
+        gains,
+        target_angle,
+        current_angle,
+        angular_velocity,
+        dt,
+        torque_limit
+    );
     double error = target_angle - current_angle;
     double candidate_integral = state.integral_error + error * dt;
 

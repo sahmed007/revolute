@@ -1,5 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "dynamics.hpp"
+#include "revolute/core/dynamics.hpp"
 
 #include <array>
 #include <cmath>
@@ -222,7 +222,9 @@ TEST_CASE("Frame schedules produce identical joint-state sequences without dropp
         for (std::size_t step = 0; step < reference.size(); ++step) {
             for (std::size_t joint = 0; joint < 2; ++joint) {
                 CHECK(actual[step][joint].angle == reference[step][joint].angle);
-                CHECK(actual[step][joint].angular_velocity == reference[step][joint].angular_velocity);
+                CHECK(
+                    actual[step][joint].angular_velocity == reference[step][joint].angular_velocity
+                );
             }
         }
     }
@@ -260,12 +262,24 @@ TEST_CASE("Simulation clock rejects invalid timing inputs") {
     const double nan = std::numeric_limits<double>::quiet_NaN();
     const double inf = std::numeric_limits<double>::infinity();
     for (double invalid : {-1.0, nan, inf}) {
-        CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, invalid, 0.01, 10), std::invalid_argument);
-        CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, 0.01, invalid, 10), std::invalid_argument);
+        CHECK_THROWS_AS(
+            revolute::advance_simulation_clock(clock, invalid, 0.01, 10),
+            std::invalid_argument
+        );
+        CHECK_THROWS_AS(
+            revolute::advance_simulation_clock(clock, 0.01, invalid, 10),
+            std::invalid_argument
+        );
     }
     CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, 0.01, 0, 10), std::invalid_argument);
-    CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, 0.01, 0.01, 0), std::invalid_argument);
-    CHECK_THROWS_AS(revolute::advance_simulation_clock(clock, 0.01, 0.01, -1), std::invalid_argument);
+    CHECK_THROWS_AS(
+        revolute::advance_simulation_clock(clock, 0.01, 0.01, 0),
+        std::invalid_argument
+    );
+    CHECK_THROWS_AS(
+        revolute::advance_simulation_clock(clock, 0.01, 0.01, -1),
+        std::invalid_argument
+    );
     CHECK(clock.accumulator == 0);
     CHECK(clock.dropped_time == 0);
 }

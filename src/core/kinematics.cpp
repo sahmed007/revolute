@@ -1,4 +1,4 @@
-#include "kinematics.hpp"
+#include "revolute/core/kinematics.hpp"
 
 #include <Eigen/Cholesky>
 #include <algorithm>
