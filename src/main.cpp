@@ -64,7 +64,9 @@ struct AppState {
     // control
     bool position_control = false;
     revolute::PIDGains shoulder_gains{5.0, 0.0, 0.0};
+    revolute::PIDGains elbow_gains{5.0, 0.0, 0.0};
     revolute::ControllerState shoulder_controller;
+    revolute::ControllerState elbow_controller;
 
     // sim state
     bool paused = true;
@@ -126,6 +128,16 @@ void advance_simulation(AppState& state) {
             state.shoulder_state.angular_velocity,
             TIME_STEP,
             state.shoulder_params.torque_limit
+        );
+
+        state.elbow_torque = revolute::pid_torque(
+            state.elbow_controller,
+            state.elbow_gains,
+            state.elbow_angle_degrees * std::numbers::pi / 180.0,
+            state.elbow_state.angle,
+            state.elbow_state.angular_velocity,
+            TIME_STEP,
+            state.elbow_params.torque_limit
         );
     }
 
@@ -270,9 +282,11 @@ int main() {
                 updates_this_frame = 0;
             }
 
-            if (ImGui::Checkbox("Shoulder position control", &state.position_control)) {
+            if (ImGui::Checkbox("Joint position control", &state.position_control)) {
                 state.shoulder_torque = 0.0;
+                state.elbow_torque = 0.0;
                 state.shoulder_controller = revolute::ControllerState{};
+                state.elbow_controller = revolute::ControllerState{};
             }
 
             double edited_kp = state.shoulder_gains.kp;
@@ -299,11 +313,35 @@ int main() {
                 }
             }
 
+            double edited_elbow_kp = state.elbow_gains.kp;
+            if (ImGui::InputDouble("Elbow Kp (N·m/rad)", &edited_elbow_kp)) {
+                if (std::isfinite(edited_elbow_kp) && edited_elbow_kp >= 0.0) {
+                    state.elbow_gains.kp = edited_elbow_kp;
+                    state.elbow_controller = revolute::ControllerState{};
+                }
+            }
+
+            double edited_elbow_ki = state.elbow_gains.ki;
+            if (ImGui::InputDouble("Elbow Ki (N·m/(rad·s))", &edited_elbow_ki)) {
+                if (std::isfinite(edited_elbow_ki) && edited_elbow_ki >= 0.0) {
+                    state.elbow_gains.ki = edited_elbow_ki;
+                    state.elbow_controller = revolute::ControllerState{};
+                }
+            }
+
+            double edited_elbow_kd = state.elbow_gains.kd;
+            if (ImGui::InputDouble("Elbow Kd (N·m·s/rad)", &edited_elbow_kd)) {
+                if (std::isfinite(edited_elbow_kd) && edited_elbow_kd >= 0.0) {
+                    state.elbow_gains.kd = edited_elbow_kd;
+                    state.elbow_controller = revolute::ControllerState{};
+                }
+            }
+
             ImGui::TextDisabled("Gains must be finite and nonnegative.");
             ImGui::BeginDisabled(state.position_control);
             ImGui::InputDouble("Shoulder torque (N·m)", &state.shoulder_torque);
-            ImGui::EndDisabled();
             ImGui::InputDouble("Elbow torque (N·m)", &state.elbow_torque);
+            ImGui::EndDisabled();
 
             ImGui::PushItemWidth(-1.0f);
             ImGui::TextUnformatted("Shoulder angle (degrees)");

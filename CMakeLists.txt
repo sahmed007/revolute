@@ -123,7 +123,7 @@ if(BUILD_TESTING)
   enable_project_warnings(revolute_dynamics_tests)
   add_test(NAME dynamics COMMAND revolute_dynamics_tests)
 
-  add_executable(revolute_control_tests tests/control_test.cpp)
+  add_executable(revolute_control_tests tests/control_test.cpp tests/tracking_test.cpp)
   target_link_libraries(revolute_control_tests PRIVATE revolute_kinematics doctest::doctest)
   target_include_directories(revolute_control_tests SYSTEM PRIVATE
     $<TARGET_PROPERTY:doctest::doctest,INTERFACE_INCLUDE_DIRECTORIES>
