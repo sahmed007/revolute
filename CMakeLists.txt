@@ -28,7 +28,12 @@ FetchContent_Declare(imgui
   GIT_TAG v1.91.9b
   GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(glfw imgui)
+FetchContent_Declare(implot
+  GIT_REPOSITORY https://github.com/epezent/implot.git
+  GIT_TAG v0.17
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(glfw imgui implot)
 
 include(CTest)
 FetchContent_Declare(eigen
@@ -58,6 +63,13 @@ target_include_directories(revolute_imgui SYSTEM PUBLIC
 )
 target_link_libraries(revolute_imgui PUBLIC glfw OpenGL::GL)
 
+add_library(revolute_implot STATIC
+  ${implot_SOURCE_DIR}/implot.cpp
+  ${implot_SOURCE_DIR}/implot_items.cpp
+)
+target_include_directories(revolute_implot SYSTEM PUBLIC ${implot_SOURCE_DIR})
+target_link_libraries(revolute_implot PUBLIC revolute_imgui)
+
 add_library(revolute_kinematics
   src/kinematics.cpp
   src/dynamics.cpp
@@ -70,12 +82,12 @@ target_link_libraries(revolute_kinematics PUBLIC Eigen3::Eigen)
 add_library(revolute_simulation src/simulation.cpp)
 target_link_libraries(revolute_simulation PUBLIC revolute_kinematics)
 
-add_executable(revolute src/main.cpp src/arm_renderer.cpp src/controls.cpp)
+add_executable(revolute src/main.cpp src/arm_renderer.cpp src/controls.cpp src/plots.cpp)
 
 if(APPLE)
   target_compile_definitions(revolute PRIVATE GL_SILENCE_DEPRECATION)
 endif()
-target_link_libraries(revolute PRIVATE revolute_simulation revolute_imgui)
+target_link_libraries(revolute PRIVATE revolute_simulation revolute_implot)
 
 function(enable_project_warnings target)
   if(MSVC)
