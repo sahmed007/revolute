@@ -3,6 +3,7 @@
 #include "controls.hpp"
 #include "dynamics.hpp"
 #include "kinematics.hpp"
+#include "plots.hpp"
 #include "simulation.hpp"
 
 #include <GLFW/glfw3.h>
@@ -10,6 +11,7 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <implot.h>
 
 const int CONTROLS_WIDTH = 340;
 const int PIXELS_PER_METER = 140;
@@ -43,6 +45,7 @@ int main() {
 
     // setup Dear ImGui context
     ImGui::CreateContext();
+    ImPlot::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -136,6 +139,7 @@ int main() {
         );
 
         // rendering
+        revolute::draw_plots(state);
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -146,6 +150,7 @@ int main() {
     // release ImGui resources
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+    ImPlot::DestroyContext();
     ImGui::DestroyContext();
 
     // destroy window before application closes

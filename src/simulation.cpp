@@ -1,5 +1,7 @@
 #include "simulation.hpp"
 
+#include "app_state.hpp"
+
 #include <algorithm>
 #include <numbers>
 
@@ -96,6 +98,30 @@ void advance_simulation(AppState& state) {
     );
 
     state.simulation_time += TIME_STEP;
+
+    double shoulder_target = state.shoulder_angle_degrees * std::numbers::pi / 180.0;
+    double elbow_target = state.elbow_angle_degrees * std::numbers::pi / 180.0;
+    SimulationSample sample{
+        .time = state.simulation_time,
+        .shoulder =
+            {.target_angle = shoulder_target,
+             .angle = state.shoulder_state.angle,
+             .angular_velocity = state.shoulder_state.angular_velocity,
+             .applied_torque = state.shoulder_applied_torque,
+             .error = shoulder_target - state.shoulder_state.angle},
+        .elbow = {
+            .target_angle = elbow_target,
+            .angle = state.elbow_state.angle,
+            .angular_velocity = state.elbow_state.angular_velocity,
+            .applied_torque = state.elbow_applied_torque,
+            .error = elbow_target - state.elbow_state.angle
+        }
+    };
+
+    state.history.push_back(sample);
+    if (size(state.history) > MAX_HISTORY_SAMPLES) {
+        state.history.pop_front();
+    }
 }
 
 void apply_pose(AppState& state) {

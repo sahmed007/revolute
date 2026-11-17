@@ -4,6 +4,8 @@
 #include "dynamics.hpp"
 #include "kinematics.hpp"
 
+#include <cstddef>
+#include <deque>
 #include <numbers>
 #include <optional>
 
@@ -11,6 +13,21 @@ namespace revolute {
 
 inline constexpr double TIME_STEP = 0.01;
 inline constexpr int MAX_UPDATES_PER_FRAME = 10;
+inline constexpr std::size_t MAX_HISTORY_SAMPLES = 2000;
+
+struct JointSample {
+    double target_angle;
+    double angle;
+    double angular_velocity;
+    double applied_torque;
+    double error;
+};
+
+struct SimulationSample {
+    double time;
+    JointSample shoulder;
+    JointSample elbow;
+};
 
 struct AppState {
     enum class SolverMode {
@@ -62,6 +79,9 @@ struct AppState {
     // sim state
     bool paused = true;
     double simulation_time = 0.0;
+
+    // sampling
+    std::deque<SimulationSample> history;
 };
 
 } // namespace revolute
