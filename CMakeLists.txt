@@ -67,12 +67,15 @@ add_library(revolute_kinematics
 )
 target_include_directories(revolute_kinematics PUBLIC include)
 target_link_libraries(revolute_kinematics PUBLIC Eigen3::Eigen)
-add_executable(revolute src/main.cpp src/arm_renderer.cpp)
+add_library(revolute_simulation src/simulation.cpp)
+target_link_libraries(revolute_simulation PUBLIC revolute_kinematics)
+
+add_executable(revolute src/main.cpp src/arm_renderer.cpp src/controls.cpp)
 
 if(APPLE)
   target_compile_definitions(revolute PRIVATE GL_SILENCE_DEPRECATION)
 endif()
-target_link_libraries(revolute PRIVATE revolute_kinematics revolute_imgui)
+target_link_libraries(revolute PRIVATE revolute_simulation revolute_imgui)
 
 function(enable_project_warnings target)
   if(MSVC)
@@ -83,6 +86,7 @@ function(enable_project_warnings target)
 endfunction()
 
 enable_project_warnings(revolute_kinematics)
+enable_project_warnings(revolute_simulation)
 enable_project_warnings(revolute)
 
 if(BUILD_TESTING)
@@ -123,8 +127,8 @@ if(BUILD_TESTING)
   enable_project_warnings(revolute_dynamics_tests)
   add_test(NAME dynamics COMMAND revolute_dynamics_tests)
 
-  add_executable(revolute_control_tests tests/control_test.cpp tests/tracking_test.cpp)
-  target_link_libraries(revolute_control_tests PRIVATE revolute_kinematics doctest::doctest)
+  add_executable(revolute_control_tests tests/control_test.cpp tests/tracking_test.cpp tests/simulation_test.cpp)
+  target_link_libraries(revolute_control_tests PRIVATE revolute_simulation doctest::doctest)
   target_include_directories(revolute_control_tests SYSTEM PRIVATE
     $<TARGET_PROPERTY:doctest::doctest,INTERFACE_INCLUDE_DIRECTORIES>
   )
